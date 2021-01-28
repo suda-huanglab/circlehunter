@@ -4,6 +4,7 @@ rule mapping:
     input:
         fq1=rules.trim.output.fq1,
         fq2=rules.trim.output.fq2
+    priority: 10
     log:
        bwa=config['workspace'] + '/samples/{prefix}/{gsm}/log/{srr}_bwa.log',
        samblaster=config['workspace'] + '/samples/{prefix}/{gsm}/log/{srr}_samblaster.log'
@@ -40,5 +41,6 @@ rule index:
         config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam.bai'
     input:
         rules.merge.output
+    priority: 5
     shell:
         'samtools index {input}'
