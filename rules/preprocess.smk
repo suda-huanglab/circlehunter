@@ -1,7 +1,7 @@
 rule trim:
     output:
-        fq1=config['workspace'] + '/samples/{prefix}/{gsm}/preprocess/{srr}_r1.trimed.fq.gz',
-        fq2=config['workspace'] + '/samples/{prefix}/{gsm}/preprocess/{srr}_r2.trimed.fq.gz',
+        fq1=temp(config['workspace'] + '/samples/{prefix}/{gsm}/preprocess/{srr}_r1.trimed.fq.gz'),
+        fq2=temp(config['workspace'] + '/samples/{prefix}/{gsm}/preprocess/{srr}_r2.trimed.fq.gz'),
         json=config['workspace'] + '/samples/{prefix}/{gsm}/qc/{srr}_fastp.json',
         html=config['workspace'] + '/samples/{prefix}/{gsm}/qc/{srr}_fastp.html'
     input:

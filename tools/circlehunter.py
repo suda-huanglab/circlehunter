@@ -2,278 +2,500 @@
 #
 # author: yangmqglobe
 # file: circlehunter.py
-# time: 2020/9/23
-from collections import defaultdict
-from itertools import groupby, count
+# time: 2021/03/28
+from collections import namedtuple, defaultdict, Counter, deque
+from itertools import count as number, combinations
 from argparse import ArgumentParser
-from pysam import AlignedSegment
-from pysam import AlignmentFile
-import re
+import operator
+import sys
+
+from scipy import stats
+import pandas as pd
+import networkx as nx
+import pysam
 
 
-M = 0
-S = 4
-H = 5
+PEAK = 'PEAK'
+LARGE = 'LARGE'
 
-SPLIT_OPERATIONS = {S, H}
+NEXT_CONNECTION_KEY = {
+    PEAK: LARGE,
+    LARGE: PEAK
+}
 
-
-LEFT_CIGAR_REGEX = re.compile(r'\d+[HS]\d+M')
-
-CENTER_CIGAR_REGEX = re.compile(r'\d+M')
-
-RIGHT_CIGAR_REGEX = re.compile(r'\d+M\d+[HS]')
-
-STRAND_DICT = {True: '-', False: '+'}
+Region = namedtuple('Region', ['chrom', 'start', 'end'])
 
 
-class InvalidReads(Exception):
-    pass
+def peaks2graph(peaks):
+    """
+    Generage a graph within the given largeinsert peaks.
 
+    Args:
+        peaks (string): path to the large peaks bed file.
+    """
+    peaks = pd.read_table(
+        peaks, names=['chrom', 'start', 'end', 'peak', 'peak_weight', 'large_weight'], usecols=range(6)
+    )
 
-class SplitReads:
-    def __init__(self):
-        self._left, self._center, self._right = None, None, None
+    graph = nx.MultiGraph()
 
-    @property
-    def is_full(self):
-        return all(map(lambda x: x is not None, (self._left, self._center, self._right)))
-
-    def add_read(self, read: AlignedSegment):
-        """
-        add the read into the SplitReads instance
-        :param read: read
-        :return: True if the SplitReads is full
-        :raise InvalidReads: if the read does not meet the conditions
-        """
-        if self._left is None:
-            self._validate_left(read)
-            self._left = read
-        elif self._center is None:
-            self._validate_center(read)
-            self._center = read
-        elif self._right is None:
-            self._validate_right(read)
-            self._right = read
-            self._left_shift()
-        return self.is_full
-
-    def _validate_left(self, read):  # noqa
-        # left cigar must match nSmM
-        if LEFT_CIGAR_REGEX.fullmatch(read.cigarstring) is None:
-            raise InvalidReads(f'Invalid left cigar')
-        # left has another one map position
-        if not read.has_tag('SA') or read.get_tag('SA').count(';') != 1:
-            raise InvalidReads(f'Reads has not another or more than two map positions')
-
-    def _validate_center(self, read):
-        # center map uniquely
-        if read.has_tag('XA'):
-            raise InvalidReads(f'Reads not mapped uniquely')
-        if read.is_reverse == self._left.is_reverse:
-            raise InvalidReads(f'Invalid center strand')
-        # center full map(flag 0x2 ensures that mate is mapped and in different strand)
-        # todo: support indel in center?
-        if CENTER_CIGAR_REGEX.fullmatch(read.cigarstring) is None:
-            raise InvalidReads(f'Invalid center cigar')
-        # center is map righter
-        if self._left.reference_start >= read.reference_start:
-            raise InvalidReads(
-                f'Invalid center reference start'
-            )
-
-    def _validate_right(self, read):
-        # right cigar match nMmS
-        if RIGHT_CIGAR_REGEX.fullmatch(read.cigarstring) is None:
-            raise InvalidReads(f'Invalid right cigar')
-        # right is in same strand
-        if self._left.is_reverse != read.is_reverse:
-            raise InvalidReads(f'Invalid right strand')
-        # right map rightest
-        if read.reference_start <= self._center.reference_start:
-            raise InvalidReads(f'Invalid right map position')
-
-    def _left_shift(self):
-        new_tags = []
-        align = self._left.query_alignment_length + self._right.query_alignment_length
-        shift = align - self._left.infer_read_length()
-        if shift > 0:
-            new_tags.append(('LS', shift, 'i'))
-            try:
-                left_seq = self._left.query_alignment_sequence[:shift]
-                right_seq = self._right.query_alignment_sequence[-shift:]
-            except TypeError:
-                print(self._right.query_name)
-                return
-            if left_seq == right_seq:
-                new_tags.append(('MF', left_seq, 'Z'))
-        self._right.set_tags(self._right.get_tags() + new_tags)
-
-    def get_circle(self):
-        if not self.is_full:
-            raise RuntimeError(f'{self} is not full')
-        shift = self._right.get_tag('LS') if self._right.has_tag('LS') else 0
-        return (
-            self._left.reference_name, self._left.reference_start, self._right.reference_end - shift
+    for _, *interval, peak, peak_weight, large_weight in peaks.itertuples():
+        graph.add_node(
+            Region(*interval), peak=peak, peak_weight=peak_weight, weight=large_weight
         )
 
-    def add_circle_id(self, circle_id):
-        for read in (self._left, self._center, self._right):
-            new_tags = read.get_tags() + [('CI', circle_id, 'Z')]
-            read.set_tags(new_tags)
-
-    def get_reads(self):
-        if not self.is_full:
-            raise RuntimeError(f'{self} is not full')
-        return self._left, self._center, self._right
+    return graph
 
 
-def mapped_filter(reads):
-    for read in reads:
-        if read.flag & 2:
-            yield read
+def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, length=1500):
+    """
+    count reads pairs span two different regions, which means these two region are connected
 
+    Args:
+        bam ([pysam.AlignmentFile]): pysam AlignmentFile object poited to the bam file
+        regions (iterable): iterable object that contain regions that are large insert reads enrich
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        length (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
 
-def duplicate_filter(reads):
-    for read in reads:
-        if not read.is_duplicate:
-            yield read
-
-
-def fetch_split_reads(bam, contig):
-    catches = {}
-
-    # fetch reads from bam file
-    reads = bam.fetch(contig)
-
-    # filter out unmap and duplicate reads
-    reads = mapped_filter(reads)
-    reads = duplicate_filter(reads)
-
-    for read in reads:
-        # init or get a SplitReads instance
-        if read.query_name not in catches:
-            catches[read.query_name] = SplitReads()
-        try:
-            # try to add the read to the SplitReads instance
-            full = catches[read.query_name].add_read(read)
-            if full:  # split read is full, yield it
-                yield catches.pop(read.query_name)
-        except InvalidReads:  # invalid read occurred, clean up
-            del catches[read.query_name]
-
-
-def run(in_bam, out_circles, out_bam):
-    bam = AlignmentFile(in_bam, 'rb')
-    out = AlignmentFile(out_bam, 'wb', template=bam)
-
-    circle_ids = count(1)
-    circle_mapper = {}
-    junction_counter = defaultdict(int)
-
-    for contig in bam.references:
-        for split_reads in fetch_split_reads(bam, contig):
-
-            chrom, start, end = split_reads.get_circle()
-
-            if (chrom, start, end) in circle_mapper:
-                circle_id = circle_mapper[(chrom, start, end)]
-            else:
-                circle_id = f'C{next(circle_ids)}'
-                circle_mapper[(chrom, start, end)] = circle_id
-            junction_counter[circle_id] += 1
-            split_reads.add_circle_id(circle_id)
-
-            for read in split_reads.get_reads():
-                out.write(read)
-
-    bam.close()
-    out.close()
-
-    with open(out_circles, 'w') as f:
-        for (chrom, start, end), circle_id in circle_mapper.items():
-            f.write(f'{chrom}\t{start}\t{end}\t{circle_id}\t{junction_counter[circle_id]}\n')
-
-
-def num_filter(reads):
-    for _, reads_pair in groupby(reads, lambda read: read.query_name):
-        reads_pair = tuple(reads_pair)
-        if len(reads_pair) == 3:
-            yield reads_pair
-
-
-def chromosome_filter(reads):
-    for pairs in reads:
-        if len(set(read.reference_name for read in pairs)) == 1:
-            yield pairs
-
-
-def sort_pairs(reads):
-    for pairs in reads:
-        yield sorted(pairs, key=lambda read: read.reference_start)
-
-
-def reads_pairs_filter(reads):
-    for pairs in reads:
-        if pairs[0].is_read1 != pairs[2].is_read1:
-            continue
-        if pairs[0].is_read1 == pairs[1].is_read1:
-            continue
-        yield pairs
-
-
-def full_map_filter(reads):
-    for pairs in reads:
-        if len(pairs[1].cigartuples) == 1:
-            yield pairs
-
-
-def strand_filter(reads):
-    for pairs in reads:
-        if pairs[0].is_reverse == pairs[1].is_reverse:
-            continue
-        if pairs[0].is_reverse != pairs[2].is_reverse:
-            continue
-        yield pairs
-
-
-def split_reads_filter(reads):
-    for pairs in reads:
-        if len(pairs[0].cigartuples) != 2 or pairs[0].cigartuples[1][0] != M:
-            continue
-        if len(pairs[2].cigartuples) != 2 or pairs[2].cigartuples[0][0] != M:
-            continue
-        yield pairs
-
-
-def check_filter(reads):
-    for pairs in reads:
-        if pairs[0].cigartuples[0][1] < pairs[2].cigartuples[1][1]:
-            yield pairs
-
-
-def left_shift_reads(reads):
-    for left, center, right in reads:
-        shift = left.cigartuples[1][1] + right.cigartuples[0][1] - center.cigartuples[0][1]
-        if shift > 0:
-            left_seq = left.query_alignment_sequence[:shift]
-            right_seq = right.query_alignment_sequence[-shift:]
-            if left_seq == right_seq:
-                right.set_tags(
-                    right.get_tags() + [('LS', shift, 'i')]
+    Returns:
+        dict: link between two region and the supported read pairs count
+    """
+    # fetch reads from regions
+    reads_pairs = defaultdict(lambda: defaultdict(list))
+    for region in regions:
+        for read in bam.fetch(*region):
+            if not read.flag & include:
+                continue
+            if read.flag & exclude:
+                continue
+            if read.mapq < mapq:
+                continue
+            if read.reference_name != read.next_reference_name or abs(read.template_length) > length:
+                pair = 1 if read.is_read1 else 2
+                strand = '-' if read.is_reverse else '+'
+                insert_size = read.template_length if read.template_length else sys.maxsize
+                reads_pairs[read.query_name][pair].append(
+                    (region, strand, insert_size)
                 )
-                yield left, center, right
+
+    # filter out reads is not paired and keep reads pair that is align far away
+    reads_pairs = {
+        name: {
+            i: max(reads, key=lambda r: r[2])[:2] for i, reads in pair.items()
+        }
+        for name, pair in reads_pairs.items() if len(pair) > 1
+    }
+
+    # count links between regions by reads pair
+    pairs_count = Counter(
+        (tuple(pair.values()) for pair in reads_pairs.values())
+    )
+
+    return pairs_count.most_common()[::-1]
+
+
+def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, min_insert_size=1500):
+    """
+    add connection between two large insert enriched regions by paired reads
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+        bam ([pysam.AlignmentFile]): pysam AlignmentFile object poited to the bam file
+        limit (number): the minimum supported paired reads to consider as a connection
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
+
+    Returns:
+        networkx.MultiGraph: graph that has been add new edges
+    """
+    # count reads pairs cross two enrich region
+    connections = count_reads_pairs(
+        bam, graph.nodes, include, exclude, mapq, min_insert_size
+    )
+    # connection nodes
+    for ((node1, strand1), (node2, strand2)), count in connections:
+        if count >= limit and node1 != node2:
+            graph.add_edge(
+                node1, node2, LARGE, weight=count, strand={
+                    node1: strand1, node2: strand2
+                }
+            )
+
+    return graph
+
+
+def has_direction(graph, node, direction):
+    """
+    check the graph if the node has a large connection direction
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+        node (tuple): a large insert enrich region
+        direction (str): direction
+
+    Returns:
+        bool: True if node has the direction connection
+    """
+    for _, edge in graph.adj[node].items():
+        try:
+            if edge[LARGE]['strand'][node] == direction:
+                return True
+        except KeyError:
+            continue
+    return False
+
+
+def add_peak_connections(graph):
+    """
+    connect nodes within the same peak
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+
+    Returns:
+        networkx.MultiGraph: graph has connection within the same peak
+    """
+    for (node1, meta1), (node2, meta2) in combinations(graph.nodes.items(), 2):
+        if meta1['peak'] != meta2['peak']:
+            continue
+        # peak should match the true situation
+        # the left side has a minus direction and right side should has a plus direction
+        node1, node2 = sorted([node1, node2])
+        if not has_direction(graph, node1, '-'):
+            continue
+        if not has_direction(graph, node2, '+'):
+            continue
+        graph.add_edge(
+            node1, node2, PEAK, peak=meta1['peak'], weight=meta1['peak_weight']
+        )
+    return graph
+
+
+def connect_types(graph, node):
+    """
+    find all connection types of the given node
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+        node (tuple): a large insert enrich region
+
+    Yields:
+        str: connection types
+    """
+    for _, meta in graph.adj[node].items():
+        for key in meta.keys():
+            yield key
+
+
+def sorted_circle(nodes):
+    """
+    sort the nodes in a circle to make it unique
+
+    Args:
+        nodes (list): list of nodes that form a nodes
+
+    Returns:
+        tuple: tuple of nodes that form the input nodes but has been sorted
+    """
+    # the minimum node is the first node
+    first = min(nodes)
+    first_index = nodes.index(first)
+    last_index = first_index - 1
+    # reconstruct the cycle to make is fit the order but wont break the cycle
+    next_index = first_index + 1 if first_index + 1 != len(nodes) else 0
+    if nodes[last_index] > nodes[next_index]:
+        nodes = nodes[first_index:] + nodes[:first_index]
+    else:
+        nodes = nodes[:next_index][::-1] + nodes[next_index:][::-1]
+    return tuple(nodes)
+
+
+def find_peak_child(graph, grandpa, father):
+    """
+    find next node which is connected by a peak connection
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+        grandpa (tuple): grandpa of the finding child
+        father (tuple): father of the finding child
+
+    Yields:
+        tuple: children
+    """
+    validater = operator.lt if graph.edges[
+        grandpa, father, LARGE
+    ]['strand'][father] == '+' else operator.gt
+
+    for adj, meta in graph.adj[father].items():
+        for key in meta.keys():
+            if key == PEAK and validater(adj, father):
+                # larger peak first
+                yield meta[key]['weight'], abs(father.start - adj.end), adj
+
+
+def find_large_child(graph, grandpa, father):
+    """
+    find next node which is connected by a large connection
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+        grandpa (tuple): grandpa of the finding child
+        father (tuple): father of the finding child
+
+    Yields:
+        tuple: children
+    """
+    direction = '+' if grandpa < father else '-'
+    for adj, meta in graph.adj[father].items():
+        for key in meta.keys():
+            if key == LARGE and graph.edges[father, adj, LARGE]['strand'][father] == direction:
+                # near connection first
+                yield meta[key]['weight'], -abs(father.start - adj.end), adj
+
+
+def find_children(graph, grandpa, key, father):
+    """
+    find next node
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+        grandpa (tuple): grandpa of the finding child
+        key (tuple): connection type between grandpa and father
+        father (tuple): father of the finding child
+
+    Returns:
+        iterable: children of given father
+    """
+    finder = find_peak_child if key == LARGE else find_large_child
+    return (child for *_, child in sorted(finder(graph, grandpa, father), reverse=True))
+
+
+def sorted_peaks(graph):
+    """
+    Sorted peaks in the graph
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+
+    Returns:
+        iterable: peaks sorted by weight and length
+    """
+    peaks = []
+    for (node1, node2, key), meta in graph.edges.items():
+        if key == PEAK:
+            node1, node2 = sorted((node1, node2))
+            peaks.append(
+                (meta['weight'], node2.end - node1.start, (node1, node2))
+            )
+    peaks.sort(reverse=True)
+    return (peak for *_, peak in peaks)
+
+
+def find_circle(graph):
+    """
+    find all possible circle in the graph by NP.
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+
+    Yields:
+        tuple: unique circle
+    """
+    peaks = sorted_peaks(graph)
+
+    visited = set()
+
+    while True:
+        try:
+            peak = next(peaks)
+        except StopIteration:
+            break
+
+        # skip visited peak as a source
+        if peak in visited:
+            continue
         else:
-            yield left, center, right
+            visited.add(peak)
+
+        circle_stack = list(peak)
+        link_stack = [PEAK, ]
+        stack_point = {node: i for i, node in enumerate(circle_stack)}
+
+        stack = [
+            find_children(graph, circle_stack[-2], PEAK, circle_stack[-1])
+        ]
+
+        while stack:
+            children = stack[-1]
+
+            try:
+                child = next(children)
+            except StopIteration:
+                pop = circle_stack.pop()
+                stack_point.pop(pop)
+                link_stack.pop()
+                stack.pop()
+                continue
+
+            if child not in stack_point:  # new peace, add to stack
+                stack_point[child] = len(circle_stack)
+                circle_stack.append(child)
+                link_stack.append(NEXT_CONNECTION_KEY[link_stack[-1]])
+                stack.append(
+                    find_children(
+                        graph, circle_stack[-2], link_stack[-1], child
+                    )
+                )
+                # remember visited peaks to skip in future
+                if NEXT_CONNECTION_KEY[link_stack[-1]] == PEAK:
+                    peak = tuple(sorted((circle_stack[-1], child)))
+                    visited.add(peak)
+            elif NEXT_CONNECTION_KEY[link_stack[-1]] == link_stack[stack_point[child]]:
+                continue
+            else:
+                if NEXT_CONNECTION_KEY[link_stack[-1]] == LARGE:
+                    validator = operator.gt if graph.edges[
+                        circle_stack[-1], child, LARGE
+                    ]['strand'][child] == '+' else operator.lt
+                    if not validator(child, circle_stack[stack_point[child] + 1]):
+                        continue
+                else:
+                    direction = '+' if circle_stack[-1] < child else '-'
+                    if graph.edges[child, circle_stack[stack_point[child] + 1], LARGE]['strand'][child] != direction:
+                        continue
+                yield circle_stack[stack_point[child]:], link_stack[stack_point[child]:] + [NEXT_CONNECTION_KEY[link_stack[-1]]]
+
+
+def ecDNA(graph):
+    """
+    find ecDNA from the graph
+
+    Args:
+        graph (networkx.MultiGraph): graph with large insert enriched regions as nodes
+
+    Yields:
+        tuple: segments in a ecDNA
+    """
+    visited = set()
+    for circle, links in find_circle(graph):
+        # skip visited circle
+        sc = sorted_circle(circle)
+        if sc in visited:
+            continue
+        visited.add(sc)
+        # rotate and extract segments form the circle
+        segments = []
+        circle, links = deque(circle), deque(links)
+        begin = circle[0]
+        while True:
+            if links[0] == PEAK:
+                if circle[0] < circle[1]:
+                    peak_direction = '-'
+                    start = circle[0].start
+                    end = circle[1].end
+                else:
+                    peak_direction = '+'
+                    start = circle[1].start
+                    end = circle[0].end
+                chrom = circle[0].chrom
+                segments.append((chrom, start, end, peak_direction))
+            circle.rotate(-1)
+            links.rotate(-1)
+            if circle[0] == begin:
+                break
+        yield segments
+
+
+def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert_size=1500, limit=1000):
+    """
+    process to find all possible eccDNA from bam and peak files
+
+    Args:
+        peaks (str): path to the peaks file
+        bam (str): path to the bam file
+        out (str): path to the output file
+        min_depth (int): the minimun depth of connection
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
+    """
+    # build a graph that within large insert enriched regions
+    graph = peaks2graph(peaks)
+    # fetch paired reads which aligned in two large insert enriched regions
+    # which means these two regions is a continue sequence in the ecDNA
+    bam = pysam.AlignmentFile(bam, 'rb')
+    graph = add_large_connections(
+        graph, bam, min_depth, include, exclude, mapq, min_insert_size
+    )
+    bam.close()
+    # simplify the graph and remove nodes that cant form a circle
+    nodes = [node for node, degree in graph.degree if degree > 0]
+    graph = graph.subgraph(nodes).copy()
+    # add peak connections
+    graph = add_peak_connections(graph)
+    # filter out nodes cant form a circle
+    nodes = [
+        node for node in graph.nodes if len(set(connect_types(graph, node))) > 1
+    ]
+    graph = graph.subgraph(nodes).copy()
+    # find all validate ecDNA circles
+    circles = ecDNA(graph)
+    # output
+    with open(out, 'w') as f:
+        for n, circle in enumerate(circles, start=1):
+            if n > 0 and n > limit:
+                break
+            for p, (chrom, start, end, strand) in enumerate(circle, start=1):
+                print(
+                    f'{chrom}\t{start}\t{end}\t{end - start}\tecDNA_{n}_{p}\t.\t{strand}', file=f
+                )
 
 
 def main():
-    parser = ArgumentParser(description='circlehunter')
-    parser.add_argument('<in.bam>', help='input bam files')
-    parser.add_argument('<out.bed>', help='output bed file')
-    parser.add_argument('<out.bam>', help='output bam file')
+    parser = ArgumentParser(
+        description='Find eccDNA from bam file and peaks'
+    )
+    parser.add_argument(
+        '-d', dest='depth', help='minimum depth of connections', required=True, type=int
+    )
+    parser.add_argument(
+        '-l', dest='length', help='minimum length of insert size', default=1500, type=int
+    )
+    parser.add_argument(
+        '-f', dest='include', help='only include reads with all  of the FLAGs in INT present',
+        default=1
+    )
+    parser.add_argument(
+        '-F', dest='exclude', help='only include reads with none of the FLAGS in INT present',
+        default=1036
+    )
+    parser.add_argument(
+        '-q', dest='mapq', help='only include reads with mapping quality >= INT', default=10, type=int
+    )
+    parser.add_argument(
+        '-m', dest='limit', help='maximum output circle.'
+        ' Warning: For some heavily rearranged samples,'
+        ' one can form massive possible connections between segments,'
+        ' this can avoid massive output and long time running.'
+        ' set to 0 to get all output (which may not be necessary).',
+        default=1000, type=int
+    )
+
+    parser.add_argument(
+        '<peaks>', help='large insert size reads enrich regions'
+    )
+    parser.add_argument('<bam>', help='input bam file')
+    parser.add_argument('<bed>', help='output bed file')
     args = vars(parser.parse_args())
-    run(args['<in.bam>'], args['<out.bed>'], args['<out.bam>'])
+    run(
+        args['<peaks>'], args['<bam>'], args['<bed>'], args['depth'],
+        args['include'], args['exclude'], args['mapq'], args['length'], args['limit']
+    )
 
 
 if __name__ == '__main__':

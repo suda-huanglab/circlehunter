@@ -1,6 +1,9 @@
+import os
+
+
 rule mapping:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{srr}.sorted.bam'
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{srr}.sorted.bam')
     input:
         fq1=rules.trim.output.fq1,
         fq2=rules.trim.output.fq2
@@ -10,7 +13,7 @@ rule mapping:
        samblaster=config['workspace'] + '/samples/{prefix}/{gsm}/log/{srr}_samblaster.log'
     params:
         rg='\'@RG\\tID:{srr}\\tSM:{gsm}\\tLB:{srr}\\tPL:ILLUMINA\'',
-        index=config['genomes']['hg38']['bwa_index'],
+        index=config['genomes'][config['assembly']]['bwa_index'],
         tmp=config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{srr}.tmp',
     threads: 8 if workflow.cores > 8 else workflow.cores
     shell:
@@ -44,3 +47,49 @@ rule index:
     priority: 5
     shell:
         'samtools index {input}'
+
+
+rule chrom_sizes:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.chrom_sizes'
+    input:
+        bam=rules.merge.output,
+        index=rules.index.output
+    params:
+        regex=os.path.dirname(workflow.snakefile) + '/tools/chrom_size.regex',
+        awk=os.path.dirname(workflow.snakefile) + '/tools/chrom_size.awk'
+    shell:
+        'samtools idxstats {input.bam} | grep -f {params.regex} | awk -f {params.awk} > {output}'
+
+
+rule clean_bed:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}_clean.bed'
+    input:
+        rules.chrom_sizes.output
+    params:
+        blacklist=config['genomes'][config['assembly']]['blacklist']
+    shell:
+        'bedtools complement -g {input} -i {params.blacklist} > {output}'
+
+
+# rule clean_bam:
+#     output:
+#         temp(config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}_clean.sorted.bam')
+#     input:
+#         bam=rules.merge.output,
+#         bed=rules.clean_bed.output
+#     params:
+#         mapq=config['params']['mapq']
+#     shell:
+#         'samtools view -b -q {params.mapq} -f 1 -F 1036 -L {input.bed} {input.bam} > {output}'
+
+
+# rule clean_index:
+#     output:
+#         temp(config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}_clean.sorted.bam.bai')
+#     input:
+#         rules.clean_bam.output
+#     priority: 5
+#     shell:
+#         'samtools index {input}'
