@@ -1,4 +1,4 @@
-# circlehunter
+* [ ] circlehunter
 
 ## 流程总览
 
@@ -21,13 +21,13 @@ conda activate circlehunter
 ```bash
 mkdir project
 cd project
-cp dxpipe/config.yaml .
+cp config-template.yaml config.yaml
 ```
 
 浏览检查配置文件内的所有配置项（所有配置项都是必须的），并按照注释进行更改。然后运行流程
 
 ```bash
-snakemake --snakefile dapipe/Snakefile -j 10 --configfile config.yaml
+snakemake --snakefile Snakefile -j 10 --configfile config.yaml
 ```
 
 其中的`-j`是允许流程使用的最大进程数。
