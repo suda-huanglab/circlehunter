@@ -14,7 +14,7 @@ rule largeinsert_tag:
 
 rule largeinsert_pileup:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_pileup.bdg'
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_pileup.bdg')
     input:
         rules.largeinsert_tag.output
     shell:
@@ -23,7 +23,7 @@ rule largeinsert_pileup:
 
 rule largeinsert_ratio_value:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_ratio.val'
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_ratio.val')
     input:
         pileup=rules.largeinsert_pileup.output,
         base=rules.accessible_peak.output.lambda_bdg
@@ -42,7 +42,7 @@ def get_largeinsert_ratio(wildcards):
 
 rule largeinsert_ratio:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_ratio.bdg'
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_ratio.bdg')
     input:
         base=rules.accessible_peak.output.lambda_bdg,
         ratio=rules.largeinsert_ratio_value.output
@@ -61,7 +61,7 @@ def get_accessible_lambda(wildcards):
 
 rule largeinsert_lambda:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_lambda.bdg'
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_lambda.bdg')
     input:
         largeinsert=rules.largeinsert_ratio.output,
         accessible=rules.accessible_peak.output.lambda_bdg
@@ -73,7 +73,7 @@ rule largeinsert_lambda:
 
 rule largeinsert_pvalue:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_pvalue.bdg'
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_pvalue.bdg')
     input:
         pileup_bdg=rules.largeinsert_pileup.output,
         lambda_bdg=rules.largeinsert_lambda.output
@@ -90,21 +90,23 @@ rule largeinsert_narrowPeak:
         'macs2 bdgpeakcall -i {input} -c 1.301 -l 50 -g 1500 -o {output}'
 
 
-# rule largeinsert_superPeak:
-#     output:
-#         config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_super_peaks.bed'
-#     input:
-#         accessible=rules.accessible_super.output,
-#         largeinsert=rules.largeinsert_narrowPeak.output
-#     shell:
-#         'bedtools intersect -a {input.accessible} -b {input.largeinsert} > {output}'
+rule largeinsert_slop:
+    output:
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_peaks_slop.bed')
+    input:
+        peaks=rules.largeinsert_narrowPeak.output,
+        chrom_size=rules.chrom_sizes.output
+    shell:
+        'bedtools slop -b 1500 -g {input.chrom_size} -i {input.peaks}'
+        ' | bedtools sort -g {input.chrom_size} -i  stdin'
+        ' | bedtools merge -i stdin > {output}'
 
 
 rule largeinsert_accessible:
     output:
         config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_accessible.bed'
     input:
-        largeinsert=rules.largeinsert_narrowPeak.output,
+        largeinsert=rules.largeinsert_slop.output,
         accessible=rules.accessible_peak.output.peak,
         chrom_size=rules.chrom_sizes.output
     params:
