@@ -1,0 +1,35 @@
+genomes:
+    hg38:
+        fasta: /share/references/hg38/fasta/hg38.fa
+        bwa_index: /share/references/hg38/bwa_index/hg38.fa
+        blacklist: /share/references/hg38/blacklist/hg38.blacklist.sorted.bed
+        refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
+
+adapter: /home/andy/Projects/circlehunter/resource/adapter.fa
+
+assembly: hg38
+
+params:
+    mapq: 10
+
+
+workspace: /mnt/1w/data2/andy/circlehunter
+
+samples:
+  GSM3318541:
+      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318541/SRR7642283/SRR7642283_1.fastq.gz
+      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318541/SRR7642283/SRR7642283_2.fastq.gz
+  GSM3318542:
+      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318542/SRR7642284/SRR7642284_1.fastq.gz
+      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318542/SRR7642284/SRR7642284_2.fastq.gz
+  GSM3318543:
+      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318543/SRR7642285/SRR7642285_1.fastq.gz
+      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318543/SRR7642285/SRR7642285_2.fastq.gz
+  GSM4317807:
+    SRR11097202:
+      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317807/SRR11097202/SRR11097202_1.fastq.gz
+      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317807/SRR11097202/SRR11097202_2.fastq.gz
+  GSM4317808:
+    SRR11097203:
+      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317808/SRR11097203/SRR11097203_1.fastq.gz
+      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317808/SRR11097203/SRR11097203_2.fastq.gz
