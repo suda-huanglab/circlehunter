@@ -10,7 +10,7 @@ include: 'rules/cleanup.smk'
 rule all:
     input:
         [
-            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_eccDNA_genes.bed'
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_ecDNA_genes.bed'
             for gsm in config['samples']
         ],
         [

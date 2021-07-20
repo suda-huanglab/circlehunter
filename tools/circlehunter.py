@@ -452,7 +452,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
                 break
             for p, (chrom, start, end, strand) in enumerate(circle, start=1):
                 print(
-                    f'{chrom}\t{start}\t{end}\t{end - start}\tecDNA_{n}_{p}\t.\t{strand}', file=f
+                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}', file=f
                 )
 
 

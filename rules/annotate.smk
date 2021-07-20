@@ -3,10 +3,10 @@ import os
 
 rule annotate:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/calling/{gsm}_eccDNA_genes.bed'
+        config['workspace'] + '/samples/{prefix}/{gsm}/calling/{gsm}_ecDNA_genes.bed'
     input:
         bed=rules.calling.output,
-        db=config['genomes'][config['assembly']]['refgene']
+        db=config['genome']['refgene']
     params:
           script=os.path.dirname(workflow.snakefile) + '/tools/annotate.py'
     shell:

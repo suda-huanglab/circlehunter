@@ -20,8 +20,19 @@ rule accessible_peak:
     input:
         rules.accessible_tag.output
     params:
+        genome_size=config['genome']['size'],
         outdir=config['workspace'] + '/samples/{prefix}/{gsm}/accessible',
         name='{gsm}_accessible'
     shell:
-        'macs2 callpeak -t {input} -f BEDPE -g hs --keep-dup all --outdir {params.outdir} -n {params.name}'
+        'macs2 callpeak -t {input} -f BEDPE -g {params.genome_size} --keep-dup all --outdir {params.outdir} -n {params.name}'
         ' -B --nomodel -p 0.05 --nolambda --max-gap 200 --min-length 1000'
+
+rule accessible_merge:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/accessible/{gsm}_accessible_peaks_merge.bed'
+    input:
+        accessible=rules.accessible_peak.output.peak,
+        chrom_size=rules.chrom_sizes.output
+    shell:
+        'bedtools sort -g {input.chrom_size} -i {input.accessible}'
+        ' | bedtools merge -d 12500 -i stdin -c 4,5 -o first,max > {output}'
