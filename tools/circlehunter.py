@@ -4,12 +4,13 @@
 # file: circlehunter.py
 # time: 2021/03/28
 from collections import namedtuple, defaultdict, Counter, deque
-from itertools import count as number, combinations
+from itertools import combinations
+from functools import lru_cache
 from argparse import ArgumentParser
 import operator
 import sys
 
-from scipy import stats
+import numpy as np
 import pandas as pd
 import networkx as nx
 import pysam
@@ -22,6 +23,14 @@ NEXT_CONNECTION_KEY = {
     PEAK: LARGE,
     LARGE: PEAK
 }
+
+SMALL_VALUE = np.exp(-10)
+DIRECTION_INDEX = {'+': -1, '-': 0}
+DIRECTION_FILTER = {'+': True, '-': False}
+POS_ATTR = {'+': 'reference_end', '-': 'reference_start'}
+OFFSET_FUNC = {'+': np.min, '-': np.max}
+SPLIT_POS_FILTER = {'+': np.greater_equal, '-': np.less_equal}
+HYPO_TRANS = {'+': np.add, '-': np.subtract}
 
 Region = namedtuple('Region', ['chrom', 'start', 'end'])
 
@@ -393,16 +402,7 @@ def ecDNA(graph):
         begin = circle[0]
         while True:
             if links[0] == PEAK:
-                if circle[0] < circle[1]:
-                    peak_direction = '-'
-                    start = circle[0].start
-                    end = circle[1].end
-                else:
-                    peak_direction = '+'
-                    start = circle[1].start
-                    end = circle[0].end
-                chrom = circle[0].chrom
-                segments.append((chrom, start, end, peak_direction))
+                segments.append((circle[0], circle[1]))
             circle.rotate(-1)
             links.rotate(-1)
             if circle[0] == begin:
@@ -410,7 +410,161 @@ def ecDNA(graph):
         yield segments
 
 
-def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert_size=1500, limit=1000):
+def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, min_insert_size=1500):
+    """fetch reads positions which are within the large insert size in a specified region
+
+    Args:
+        bam (pysam.AlignmentFile): opened bam file
+        chrom (string): contig name
+        start (int): start
+        end (int): end
+        direction (string): break direction, choices from '+' or '-'
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
+
+    Returns:
+        [np.ndarray]: large insert size reads end positions
+    """
+    large_pos = []
+    for read in bam.fetch(chrom, start, end):
+        if not read.flag & include:
+            continue
+        if read.flag & exclude:
+            continue
+        if read.mapq < mapq:
+            continue
+        if read.reference_name == read.next_reference_name and abs(read.template_length) <= min_insert_size:
+            continue
+        if read.is_reverse == DIRECTION_FILTER[direction]:
+            continue
+        large_pos.append(getattr(read, POS_ATTR[direction]))
+    return np.array(large_pos)
+
+
+def fetch_split_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10):
+    """fetch reads positions which are split reads in specified region.
+
+    Args:
+        bam (pysam.AlignmentFile): opened bam file
+        chrom (string): contig name
+        start (int): start
+        end (int ): end
+        direction (string): break direction
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+
+    Returns:
+        [np.ndarray]: large insert size reads end positions
+    """
+    split_pos = []
+    for read in bam.fetch(chrom, start, end):
+        if not read.flag & include:
+            continue
+        if read.flag & exclude:
+            continue
+        if read.mapq < mapq:
+            continue
+        if read.cigartuples[DIRECTION_INDEX[direction]][0] not in {4, 5}:
+            continue
+        split_pos.append(getattr(read, POS_ATTR[direction]))
+    return np.array(split_pos)
+
+
+def large_log_pdf(sample, hypo):
+    """calculate log pdf of given hypothesis using german tank model
+
+    Args:
+        sample ([np.ndarray]): observe samples
+        hypo ([np.ndarray]): hypothesis
+
+    Returns:
+        [np.ndarray]: log pdf for given hypothesis
+    """
+    # calculate likelihood of all hypothesis
+    likelihood = np.tile(1 / hypo, (len(hypo), 1))
+    # add really small value to avoid log(0)
+    likelihood[np.tril_indices_from(likelihood, k=-1)] = 0
+    # cumulative product of likelihood from observe sample
+    s = np.subtract.outer(sample, hypo)
+    s[np.all(s < 0, axis=1), 0] = 0
+    _, likelihood_index = np.where(s == 0)
+    likelihood = likelihood[likelihood_index]
+    pmf = np.ones_like(hypo, dtype=np.float64)
+    for l in likelihood:
+        pmf *= l
+        pmf /= np.sum(pmf)
+    return np.log(pmf + SMALL_VALUE)
+
+
+def split_log_pdf(sample, hypo, times=1000):
+    """calculate pdf of given hypo using bootstrap model
+
+    Args:
+        sample (np.ndarray): observe sample
+        hypo (np.ndarray): hypothesis
+        times (int, optional): bootstrap times. Defaults to 1000.
+
+    Returns:
+        np.ndarray: log pdf for given hypothesis
+    """
+    bootstrap_sample = np.random.choice(sample, len(sample) * times)
+    bootstrap_median = np.median(
+        bootstrap_sample.reshape(len(sample), times), axis=0
+    )
+    pos, count = np.unique(bootstrap_median, return_counts=True)
+    log_freq = np.log(count / np.sum(count))
+    pos_index, x_index = np.where(np.equal.outer(pos, hypo))
+    pdf = np.full_like(hypo, -10, dtype=np.float64)
+    pdf[x_index] = log_freq[pos_index]
+    return pdf
+
+
+@lru_cache(maxsize=1024)
+def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, min_insert_size=1500, times=1000):
+    with pysam.AlignmentFile(bam, 'rb') as f:
+        split_pos = fetch_split_pos(
+            f, chrom, start, end, direction, include, exclude, mapq
+        )
+        large_pos = fetch_large_pos(
+            f, chrom, start, end, direction, include, exclude, mapq, min_insert_size
+        )
+    offset = OFFSET_FUNC[direction](large_pos)
+    large_sample = np.unique(np.abs(large_pos - offset)) + 1
+    split_sample = np.abs(
+        split_pos[SPLIT_POS_FILTER[direction](split_pos, offset)] - offset
+    ) + 1
+    hypo = np.arange(0, min_insert_size) + 1
+    abs_hypo = HYPO_TRANS[direction](offset, hypo) - 1
+    log_pdf = large_log_pdf(large_sample, hypo) + \
+        split_log_pdf(split_sample, hypo, times)
+    mle = abs_hypo[np.argmax(log_pdf)]
+    cdf = np.cumsum(np.exp(log_pdf)) / np.sum(np.exp(log_pdf))
+    cl, cr = np.sort(
+        abs_hypo[np.sum(np.stack([cdf < 0.025, cdf < 0.975]), axis=1)]
+    )
+    return cl, mle, cr
+
+
+def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, min_insert_size=1500, times=1000):
+    if region1 < region2:
+        direction1, direction2 = '-', '+'
+        strand = '+'
+    else:
+        direction1, direction2 = '+', '-'
+        strand = '-'
+    cl1, mle1, cr1 = estimate_breakpoint(
+        bam, *region1, direction1, include, exclude, mapq, min_insert_size, times
+    )
+    cl2, mle2, cr2 = estimate_breakpoint(
+        bam, *region2, direction2, include, exclude, mapq, min_insert_size, times
+    )
+    return region1[0], mle1, mle2, strand, f'{cl1}-{cr1}', f'{cl2}-{cr2}'
+
+
+def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert_size=1500, times=1000, limit=1000):
     """
     process to find all possible eccDNA from bam and peak files
 
@@ -423,16 +577,17 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
         min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
+        times (int, optional): bootstrap times. Defaults to 1000.
+        limit (int, optional): limit of output
     """
     # build a graph that within large insert enriched regions
     graph = peaks2graph(peaks)
     # fetch paired reads which aligned in two large insert enriched regions
     # which means these two regions is a continue sequence in the ecDNA
-    bam = pysam.AlignmentFile(bam, 'rb')
-    graph = add_large_connections(
-        graph, bam, min_depth, include, exclude, mapq, min_insert_size
-    )
-    bam.close()
+    with pysam.AlignmentFile(bam, 'rb') as f:
+        graph = add_large_connections(
+            graph, f, min_depth, include, exclude, mapq, min_insert_size
+        )
     # simplify the graph and remove nodes that cant form a circle
     nodes = [node for node, degree in graph.degree if degree > 0]
     graph = graph.subgraph(nodes).copy()
@@ -450,9 +605,12 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
         for n, circle in enumerate(circles, start=1):
             if n > 0 and n > limit:
                 break
-            for p, (chrom, start, end, strand) in enumerate(circle, start=1):
+            for p, (region1, region2) in enumerate(circle, start=1):
+                chrom, start, end, strand, start_ci, end_ci = estimate_segment(
+                    region1, region2, bam, include, exclude, mapq, min_insert_size, times
+                )
                 print(
-                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}', file=f
+                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}', file=f
                 )
 
 
@@ -478,6 +636,9 @@ def main():
         '-q', dest='mapq', help='only include reads with mapping quality >= INT', default=10, type=int
     )
     parser.add_argument(
+        '-t', dest='times', help='bootstrap times', default=1000, type=int
+    )
+    parser.add_argument(
         '-m', dest='limit', help='maximum output circle.'
         ' Warning: For some heavily rearranged samples,'
         ' one can form massive possible connections between segments,'
@@ -494,7 +655,8 @@ def main():
     args = vars(parser.parse_args())
     run(
         args['<peaks>'], args['<bam>'], args['<bed>'], args['depth'],
-        args['include'], args['exclude'], args['mapq'], args['length'], args['limit']
+        args['include'], args['exclude'], args['mapq'], args['length'],
+        args['times'], args['limit']
     )
 
 
