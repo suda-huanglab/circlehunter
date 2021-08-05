@@ -510,6 +510,9 @@ def split_log_pdf(sample, hypo, times=1000):
     Returns:
         np.ndarray: log pdf for given hypothesis
     """
+    pdf = np.full_like(hypo, -10, dtype=np.float64)
+    if len(sample) == 0:
+        return pdf
     bootstrap_sample = np.random.choice(sample, len(sample) * times)
     bootstrap_median = np.median(
         bootstrap_sample.reshape(len(sample), times), axis=0
@@ -517,7 +520,6 @@ def split_log_pdf(sample, hypo, times=1000):
     pos, count = np.unique(bootstrap_median, return_counts=True)
     log_freq = np.log(count / np.sum(count))
     pos_index, x_index = np.where(np.equal.outer(pos, hypo))
-    pdf = np.full_like(hypo, -10, dtype=np.float64)
     pdf[x_index] = log_freq[pos_index]
     return pdf
 
