@@ -7,9 +7,12 @@ rule accessible_tag:
         bed=rules.clean_bed.output
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
-        mapq=config['params']['mapq']
+        mapq=config['params']['mapq'],
+        include=config['params']['include'],
+        exclude=config['params']['exclude'],
+        mismatch=config['params']['mismatch']
     shell:
-        'python {params.script} -q {params.mapq} -L {input.bed} {input.bam} {output}'
+        'python {params.script} -q {params.mapq} -f {params.include} -F {params.exclude} -r {params.mismatch} -L {input.bed} {input.bam} {output}'
 
 
 rule accessible_peak:

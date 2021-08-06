@@ -9,6 +9,7 @@ from functools import lru_cache
 from argparse import ArgumentParser
 import operator
 import sys
+import re
 
 import numpy as np
 import pandas as pd
@@ -56,7 +57,7 @@ def peaks2graph(peaks):
     return graph
 
 
-def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, length=1500):
+def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, ratio=0.05, length=1500):
     """
     count reads pairs span two different regions, which means these two region are connected
 
@@ -66,6 +67,7 @@ def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, length=150
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
         length (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
 
     Returns:
@@ -81,6 +83,13 @@ def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, length=150
                 continue
             if read.mapq < mapq:
                 continue
+            if read.has_tag('MD'):
+                mismatch = len(re.findall(r'[ATCG]', read.get_tag('MD')))
+                match = sum(
+                    map(int, (re.findall(r'(\d+)M', read.cigarstring)))
+                )
+                if mismatch > match * ratio:
+                    continue
             if read.reference_name != read.next_reference_name or abs(read.template_length) > length:
                 pair = 1 if read.is_read1 else 2
                 strand = '-' if read.is_reverse else '+'
@@ -105,7 +114,7 @@ def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, length=150
     return pairs_count.most_common()[::-1]
 
 
-def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, min_insert_size=1500):
+def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500):
     """
     add connection between two large insert enriched regions by paired reads
 
@@ -116,6 +125,7 @@ def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, m
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
         min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
 
     Returns:
@@ -123,7 +133,7 @@ def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, m
     """
     # count reads pairs cross two enrich region
     connections = count_reads_pairs(
-        bam, graph.nodes, include, exclude, mapq, min_insert_size
+        bam, graph.nodes, include, exclude, mapq, ratio, min_insert_size
     )
     # connection nodes
     for ((node1, strand1), (node2, strand2)), count in connections:
@@ -410,7 +420,7 @@ def ecDNA(graph):
         yield segments
 
 
-def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, min_insert_size=1500):
+def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500):
     """fetch reads positions which are within the large insert size in a specified region
 
     Args:
@@ -422,6 +432,7 @@ def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, 
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
         min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
 
     Returns:
@@ -435,6 +446,13 @@ def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, 
             continue
         if read.mapq < mapq:
             continue
+        if read.has_tag('MD'):
+            mismatch = len(re.findall(r'[ATCG]', read.get_tag('MD')))
+            match = sum(
+                map(int, (re.findall(r'(\d+)M', read.cigarstring)))
+            )
+            if mismatch > match * ratio:
+                continue
         if read.reference_name == read.next_reference_name and abs(read.template_length) <= min_insert_size:
             continue
         if read.is_reverse == DIRECTION_FILTER[direction]:
@@ -443,7 +461,7 @@ def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, 
     return np.array(large_pos)
 
 
-def fetch_split_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10):
+def fetch_split_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, ratio=0.05):
     """fetch reads positions which are split reads in specified region.
 
     Args:
@@ -455,6 +473,7 @@ def fetch_split_pos(bam, chrom, start, end, direction, include=1, exclude=1036, 
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
 
     Returns:
         [np.ndarray]: large insert size reads end positions
@@ -467,6 +486,13 @@ def fetch_split_pos(bam, chrom, start, end, direction, include=1, exclude=1036, 
             continue
         if read.mapq < mapq:
             continue
+        if read.has_tag('MD'):
+            mismatch = len(re.findall(r'[ATCG]', read.get_tag('MD')))
+            match = sum(
+                map(int, (re.findall(r'(\d+)M', read.cigarstring)))
+            )
+            if mismatch > match * ratio:
+                continue
         if read.cigartuples[DIRECTION_INDEX[direction]][0] not in {4, 5}:
             continue
         split_pos.append(getattr(read, POS_ATTR[direction]))
@@ -525,13 +551,31 @@ def split_log_pdf(sample, hypo, times=1000):
 
 
 @lru_cache(maxsize=1024)
-def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, min_insert_size=1500, times=1000):
+def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, times=1000):
+    """estimate break point for the given region and direction.
+
+    Args:
+        bam (pysam.AlignmentFile): opened bam file
+        chrom (string): contig name
+        start (int): start
+        end (int ): end
+        direction (string): break direction
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
+        min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
+        times (int, optional): bootstrap times. Defaults to 1000.
+
+    Returns:
+        [type]: [description]
+    """
     with pysam.AlignmentFile(bam, 'rb') as f:
         split_pos = fetch_split_pos(
-            f, chrom, start, end, direction, include, exclude, mapq
+            f, chrom, start, end, direction, include, exclude, mapq, ratio
         )
         large_pos = fetch_large_pos(
-            f, chrom, start, end, direction, include, exclude, mapq, min_insert_size
+            f, chrom, start, end, direction, include, exclude, mapq, ratio, min_insert_size
         )
     offset = OFFSET_FUNC[direction](large_pos)
     large_sample = np.unique(np.abs(large_pos - offset)) + 1
@@ -550,7 +594,7 @@ def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=10
     return cl, mle, cr
 
 
-def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, min_insert_size=1500, times=1000):
+def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, times=1000):
     if region1 < region2:
         direction1, direction2 = '-', '+'
         strand = '+'
@@ -558,15 +602,15 @@ def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, mi
         direction1, direction2 = '+', '-'
         strand = '-'
     cl1, mle1, cr1 = estimate_breakpoint(
-        bam, *region1, direction1, include, exclude, mapq, min_insert_size, times
+        bam, *region1, direction1, include, exclude, mapq, ratio, min_insert_size, times
     )
     cl2, mle2, cr2 = estimate_breakpoint(
-        bam, *region2, direction2, include, exclude, mapq, min_insert_size, times
+        bam, *region2, direction2, include, exclude, mapq, ratio, min_insert_size, times
     )
     return region1[0], mle1, mle2, strand, f'{cl1}-{cr1}', f'{cl2}-{cr2}'
 
 
-def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert_size=1500, times=1000, limit=1000):
+def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, times=1000, limit=1000):
     """
     process to find all possible eccDNA from bam and peak files
 
@@ -578,6 +622,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
         min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
         times (int, optional): bootstrap times. Defaults to 1000.
         limit (int, optional): limit of output
@@ -588,7 +633,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
     # which means these two regions is a continue sequence in the ecDNA
     with pysam.AlignmentFile(bam, 'rb') as f:
         graph = add_large_connections(
-            graph, f, min_depth, include, exclude, mapq, min_insert_size
+            graph, f, min_depth, include, exclude, mapq, ratio, min_insert_size
         )
     # simplify the graph and remove nodes that cant form a circle
     nodes = [node for node, degree in graph.degree if degree > 0]
@@ -609,7 +654,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
                 break
             for p, (region1, region2) in enumerate(circle, start=1):
                 chrom, start, end, strand, start_ci, end_ci = estimate_segment(
-                    region1, region2, bam, include, exclude, mapq, min_insert_size, times
+                    region1, region2, bam, include, exclude, mapq, ratio, min_insert_size, times
                 )
                 print(
                     f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}', file=f
@@ -618,7 +663,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, min_insert
 
 def main():
     parser = ArgumentParser(
-        description='Find eccDNA from bam file and peaks'
+        description='Find ecDNA from bam file and peaks'
     )
     parser.add_argument(
         '-d', dest='depth', help='minimum depth of connections', required=True, type=int
@@ -628,14 +673,17 @@ def main():
     )
     parser.add_argument(
         '-f', dest='include', help='only include reads with all  of the FLAGs in INT present',
-        default=1
+        default=1, type=int
     )
     parser.add_argument(
         '-F', dest='exclude', help='only include reads with none of the FLAGS in INT present',
-        default=1036
+        default=1036, type=int
     )
     parser.add_argument(
         '-q', dest='mapq', help='only include reads with mapping quality >= INT', default=10, type=int
+    )
+    parser.add_argument(
+        '-r', dest='ratio', help='only include reads with mismatch ratio <= FLOAT', default=0.05, type=float
     )
     parser.add_argument(
         '-t', dest='times', help='bootstrap times', default=1000, type=int
@@ -657,8 +705,8 @@ def main():
     args = vars(parser.parse_args())
     run(
         args['<peaks>'], args['<bam>'], args['<bed>'], args['depth'],
-        args['include'], args['exclude'], args['mapq'], args['length'],
-        args['times'], args['limit']
+        args['include'], args['exclude'], args['mapq'], args['ratio'],
+        args['length'], args['times'], args['limit']
     )
 
 

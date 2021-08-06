@@ -43,6 +43,10 @@ rule calling:
         index=rules.index.output
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/circlehunter.py',
-        depth=get_depth
+        depth=get_depth,
+        mapq=config['params']['mapq'],
+        include=config['params']['include'],
+        exclude=config['params']['exclude'],
+        mismatch=config['params']['mismatch']
     shell:
-        'python {params.script} -d {params.depth} {input.peaks} {input.bam} {output}'
+        'python {params.script} -q {params.mapq} -f {params.include} -F {params.exclude} -r {params.mismatch} -d {params.depth} {input.peaks} {input.bam} {output}'
