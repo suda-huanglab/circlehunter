@@ -1,3 +1,4 @@
+from functools import lru_cache
 import os
 
 
@@ -21,6 +22,12 @@ rule verification_config:
         [
             config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/foldchange/{gsm}_chrM_depth.value'
             for gsm in config['samples']
+        ],[
+            config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_chrM_{foldchange}_{r}.fastq.gz'
+            for gsm in config['samples']
+            for srr in config['samples'][gsm]
+            for foldchange in range(10, 101, 10)
+            for r in (1, 2)
         ]
 
 
@@ -149,3 +156,37 @@ rule chrM_depth:
         rules.chrM_pileup.output
     shell:
         'awk \'{{LENGTH+=$3-$2;BASE+=$4*($3-$2)}}END{{print BASE / LENGTH}}\' {input} > {output}'
+
+
+@lru_cache(maxsize=1024)
+def line_count(filename, srr):
+    srr_re = re.compile(f'^{srr}\.')
+    count = 0
+    with open(filename) as f:
+        for line in f:
+            if srr_re.match(line):
+                count += 1
+    return count
+
+
+def get_line_num(wildcards):
+    import re
+    comment_depth = get_accessible_lambda(wildcards)
+    filename = config['workspace'] + f'/verification/samples/{wildcards.prefix}/{wildcards.gsm}/foldchange/{wildcards.gsm}_chrM_depth.value'
+    with open(filename) as f:
+        chrM_depth = f.read().strip()
+    ratio = int(wildcards.foldchange) / 100 * float(comment_depth) / float(chrM_depth)
+    filename = config['workspace'] + f'/verification/samples/{wildcards.prefix}/{wildcards.gsm}/fastq/{wildcards.gsm}_{wildcards.chrom}.list'
+    count = line_count(filename, wildcards.srr)
+    return int(count * ratio + 1) * 4
+
+
+rule split_reads:
+    output:
+        config['workspace'] + '/verification/samples/{prefix}/{gsm}/fastq/{srr}_{chrom}_{foldchange}_{r}.fastq.gz'
+    input:
+        rules.extract_reads.output
+    params:
+        num=get_line_num
+    shell:
+        'zcat {input} | sed -n \'1,{params.num}p\' | gzip -c > {output}'
