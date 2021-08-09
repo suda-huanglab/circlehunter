@@ -3,32 +3,70 @@ import os
 
 
 rule verification_config:
+    output:
+        config['workspace'] + '/verification/verify.yaml'
     input:
-        config['workspace'] + '/verification/genome/mock.fa',
-        config['workspace'] + '/verification/genome/mock.blacklist.bed',
-        config['workspace'] + '/verification/genome/mock.fa.fai',
-        config['workspace'] + '/verification/genome/mock.fa.bwt',
-        [
+        fasta=config['workspace'] + '/verification/genome/mock.fa',
+        blacklist=config['workspace'] + '/verification/genome/mock.blacklist.bed',
+        fai=config['workspace'] + '/verification/genome/mock.fa.fai',
+        bwt=config['workspace'] + '/verification/genome/mock.fa.bwt',
+        reads=[
             config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{gsm}_chr22.list'
             for gsm in config['samples']
         ],
-        [
+        fastq=[
             config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_{chrom}_{r}.fastq.gz'
             for gsm in config['samples']
             for srr in config['samples'][gsm]
             for chrom in ('chr22', 'chrM')
             for r in (1, 2)
         ],
-        [
+        depth=[
             config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/foldchange/{gsm}_chrM_depth.value'
             for gsm in config['samples']
-        ],[
+        ],
+        all_fastq=[
             config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_chrM_{foldchange}_{r}.fastq.gz'
             for gsm in config['samples']
             for srr in config['samples'][gsm]
             for foldchange in range(10, 101, 10)
             for r in (1, 2)
         ]
+    run:
+        from pyfaidx import Fasta
+        import pandas as pd
+        import json
+        import yaml
+        genome = Fasta(input.fasta)
+        genome = {
+            'size': len(genome['chr23']),
+            'fasta': input.fasta,
+            'bwa_index': input.fasta,
+            'blacklist': input.blacklist,
+            'refgene': config['genome']['refgene']
+        }
+        chroms = [f'chrM_{foldchange}' for foldchange in range(10, 101, 10)] + ['chrM']
+        samples = {
+            f'{gsm}_{foldchange}': {
+                f'{srr}_{chrom}': {
+                    f'fq{r}': config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_{chrom}_{r}.fastq.gz'
+                    for r in (1, 2)
+                }
+                for srr in config['samples'][gsm]
+                for chrom in ('chr22', f'chrM_{foldchange}')
+            }
+            for gsm in config['samples']
+            for foldchange in range(10, 101, 10)
+        }
+        verification = {
+            'genome': genome,
+            'adapter': json.loads(json.dumps(config['adapter'])),
+            'params': json.loads(json.dumps(config['params'])),
+            'workspace': config['workspace'] + '/verification',
+            'samples': samples
+        }
+        with open(output[0], 'w') as f:
+            yaml.dump(verification, f)
 
 
 rule mock_genome:
@@ -45,7 +83,7 @@ rule mock_genome:
         l = len(genome['chr22']) // 3
         s = len(genome['chrM']) // 2
         f = open(f'{output.fasta}.tmp', 'w')
-        f.write('>chrF\n')
+        f.write('>chr23\n')
         f.write(genome['chr22'][:l].seq)
         f.write(genome['chrM'][:s].seq)
         f.write(genome['chr22'][l:2*l].seq)
@@ -60,6 +98,7 @@ rule mock_genome:
         blacklist['region'] =  blacklist['start'] // l
         blacklist['start'] += blacklist['region'] * s
         blacklist['end'] += blacklist['region'] * s
+        blacklist['chrom'] = 'chr23'
         blacklist[['chrom', 'start', 'end']].to_csv(
             output.blacklist, sep='\t', index=False, header=False
         )
@@ -158,27 +197,13 @@ rule chrM_depth:
         'awk \'{{LENGTH+=$3-$2;BASE+=$4*($3-$2)}}END{{print BASE / LENGTH}}\' {input} > {output}'
 
 
-@lru_cache(maxsize=1024)
-def line_count(filename, srr):
-    srr_re = re.compile(f'^{srr}\.')
-    count = 0
-    with open(filename) as f:
-        for line in f:
-            if srr_re.match(line):
-                count += 1
-    return count
-
-
-def get_line_num(wildcards):
+def get_step_num(wildcards):
     import re
     comment_depth = get_accessible_lambda(wildcards)
     filename = config['workspace'] + f'/verification/samples/{wildcards.prefix}/{wildcards.gsm}/foldchange/{wildcards.gsm}_chrM_depth.value'
     with open(filename) as f:
         chrM_depth = f.read().strip()
-    ratio = int(wildcards.foldchange) / 100 * float(comment_depth) / float(chrM_depth)
-    filename = config['workspace'] + f'/verification/samples/{wildcards.prefix}/{wildcards.gsm}/fastq/{wildcards.gsm}_{wildcards.chrom}.list'
-    count = line_count(filename, wildcards.srr)
-    return int(count * ratio + 1) * 4
+    return int(float(chrM_depth) / float(comment_depth)) // int(wildcards.foldchange) + 1
 
 
 rule split_reads:
@@ -187,6 +212,6 @@ rule split_reads:
     input:
         rules.extract_reads.output
     params:
-        num=get_line_num
+        step=get_step_num
     shell:
-        'zcat {input} | sed -n \'1,{params.num}p\' | gzip -c > {output}'
+        'zcat {input} | awk \'int((NR - 1) / 4) % {params.step} == 0\' | gzip -c > {output}'
