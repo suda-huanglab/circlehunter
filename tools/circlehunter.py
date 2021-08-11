@@ -11,6 +11,7 @@ import operator
 import sys
 import re
 
+from scipy import stats
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -499,59 +500,91 @@ def fetch_split_pos(bam, chrom, start, end, direction, include=1, exclude=1036, 
     return np.array(split_pos)
 
 
-def large_log_pdf(sample, hypo):
-    """calculate log pdf of given hypothesis using german tank model
+# @lru_cache(maxsize=1024)
+def large_likelihood(h, d, p):
+    """calculate likelihood for given hypothesis when observe a specific data
 
     Args:
-        sample ([np.ndarray]): observe samples
-        hypo ([np.ndarray]): hypothesis
+        h (np.array): array that contian hypothesis
+        d (int): data being observe
+        p (float): error align reads fraction
 
     Returns:
-        [np.ndarray]: log pdf for given hypothesis
+        np.array: likelihood
     """
-    # calculate likelihood of all hypothesis
-    likelihood = np.tile(1 / hypo, (len(hypo), 1))
-    # add really small value to avoid log(0)
-    likelihood[np.tril_indices_from(likelihood, k=-1)] = 0
-    # cumulative product of likelihood from observe sample
-    s = np.subtract.outer(sample, hypo)
-    s[np.all(s < 0, axis=1), 0] = 0
-    _, likelihood_index = np.where(s == 0)
-    likelihood = likelihood[likelihood_index]
-    pmf = np.ones_like(hypo, dtype=np.float64)
-    for l in likelihood:
-        pmf *= l
-        pmf /= np.sum(pmf)
-    return np.log(pmf + SMALL_VALUE)
+    pdf = 1 / h * (1 - p)
+    pdf[h < d] = 0
+    pdf += 1 / len(h) * p
+    return pdf / np.sum(pdf)
 
 
-def split_log_pdf(sample, hypo, times=1000):
-    """calculate pdf of given hypo using bootstrap model
+def large_posterior(hypo, sample, fraction=0.05):
+    """calculate posterior for given hypothesis when observe samples
 
     Args:
-        sample (np.ndarray): observe sample
-        hypo (np.ndarray): hypothesis
-        times (int, optional): bootstrap times. Defaults to 1000.
+        hypo (np.array): hypothesis
+        sample (np.array): observe data
+        partial (float): error align reads fraction
 
     Returns:
-        np.ndarray: log pdf for given hypothesis
+        np.array: posterior pmf
     """
-    pdf = np.full_like(hypo, -10, dtype=np.float64)
     if len(sample) == 0:
-        return pdf
-    bootstrap_sample = np.random.choice(sample, len(sample) * times)
-    bootstrap_median = np.median(
-        bootstrap_sample.reshape(len(sample), times), axis=0
-    )
-    pos, count = np.unique(bootstrap_median, return_counts=True)
-    log_freq = np.log(count / np.sum(count))
-    pos_index, x_index = np.where(np.equal.outer(pos, hypo))
-    pdf[x_index] = log_freq[pos_index]
-    return pdf
+        return np.full_like(hypo, -10, dtype=np.float64)
+    likelihood = {
+        s: large_likelihood(hypo, s, fraction) for s in np.unique(sample)
+    }
+    posterior = np.ones_like(hypo, dtype=np.float64)
+    for s in sample:
+        posterior *= likelihood[s]
+        posterior /= np.sum(posterior)
+    return np.log(posterior + np.exp(-10))
+
+
+# @lru_cache(maxsize=1024)
+def split_likelihood(h, d, e, p):
+    """calculate likelihood for given hypothesis when observe a specific data
+
+    Args:
+        h (np.array): array that contian hypothesis
+        d (int): data being observe
+        e (int): possible error mapping expand length
+        p (float): error align reads fraction
+
+    Returns:
+        np.array: likelihood
+    """
+    pdf = stats.norm.pdf(h, d, e / 2) * (1 - p)
+    pdf += 1 / len(h) * p
+    return pdf / np.sum(pdf)
+
+
+def split_posterior(hypo, sample, error=2, fraction=0.05):
+    """calculate posterior for given hypothesis when observe samples
+
+    Args:
+        hypo (np.array): hypothesis
+        sample (np.array): observe data
+        error (int): possible error mapping expand length
+        fraction (float): error align reads fraction
+
+    Returns:
+        [type]: [description]
+    """
+    if len(sample) == 0:
+        return np.full_like(hypo, -10, dtype=np.float64)
+    likelihood = {
+        s: split_likelihood(hypo, s, error, fraction) for s in np.unique(sample)
+    }
+    posterior = np.ones_like(hypo, dtype=np.float64)
+    for s in sample:
+        posterior *= likelihood[s]
+        posterior /= np.sum(posterior)
+    return np.log(posterior + np.exp(-10))
 
 
 @lru_cache(maxsize=1024)
-def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, times=1000):
+def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, fraction=0.05):
     """estimate break point for the given region and direction.
 
     Args:
@@ -565,7 +598,8 @@ def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=10
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
         ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
         min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
-        times (int, optional): bootstrap times. Defaults to 1000.
+        error (int, optional): possible error mapping expand length. Defaults to 2.
+        fraction (float, optional): error align reads fraction. Defaults to 0.05.
 
     Returns:
         [type]: [description]
@@ -578,14 +612,16 @@ def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=10
             f, chrom, start, end, direction, include, exclude, mapq, ratio, min_insert_size
         )
     offset = OFFSET_FUNC[direction](large_pos)
+    hypo = np.arange(0, min_insert_size) + 1
+    abs_hypo = HYPO_TRANS[direction](offset, hypo) - 1
     large_sample = np.unique(np.abs(large_pos - offset)) + 1
+    large_sample = large_sample[large_sample <= min_insert_size]
     split_sample = np.abs(
         split_pos[SPLIT_POS_FILTER[direction](split_pos, offset)] - offset
     ) + 1
-    hypo = np.arange(0, min_insert_size) + 1
-    abs_hypo = HYPO_TRANS[direction](offset, hypo) - 1
-    log_pdf = large_log_pdf(large_sample, hypo) + \
-        split_log_pdf(split_sample, hypo, times)
+    split_sample = split_sample[split_sample <= min_insert_size]
+    log_pdf = large_posterior(hypo, large_sample, fraction) + \
+        split_posterior(hypo, split_sample, error, fraction)
     mle = abs_hypo[np.argmax(log_pdf)]
     cdf = np.cumsum(np.exp(log_pdf)) / np.sum(np.exp(log_pdf))
     cl, cr = np.sort(
@@ -594,7 +630,24 @@ def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=10
     return cl, mle, cr
 
 
-def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, times=1000):
+def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, fraction=0.05):
+    """estimate a segments range and confidence intervals
+
+    Args:
+        region1 (tuple): large insert enriched region
+        region2 (tuple): large insert enriched region
+        bam (pysam.AlignmentFile): opened bam file
+        include (int, optional): only include reads within these flags. Defaults to 1.
+        exclude (int, optional): exclude reads within these flags. Defaults to 1036.
+        mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
+        ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
+        min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
+        error (int, optional): possible error mapping expand length. Defaults to 2.
+        fraction (float, optional): error align reads fraction. Defaults to 0.05.
+
+    Returns:
+        tuple: genome range for the segment
+    """
     if region1 < region2:
         direction1, direction2 = '-', '+'
         strand = '+'
@@ -602,15 +655,15 @@ def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ra
         direction1, direction2 = '+', '-'
         strand = '-'
     cl1, mle1, cr1 = estimate_breakpoint(
-        bam, *region1, direction1, include, exclude, mapq, ratio, min_insert_size, times
+        bam, *region1, direction1, include, exclude, mapq, ratio, min_insert_size, error, fraction
     )
     cl2, mle2, cr2 = estimate_breakpoint(
-        bam, *region2, direction2, include, exclude, mapq, ratio, min_insert_size, times
+        bam, *region2, direction2, include, exclude, mapq, ratio, min_insert_size, error, fraction
     )
     return region1[0], mle1, mle2, strand, f'{cl1}-{cr1}', f'{cl2}-{cr2}'
 
 
-def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, times=1000, limit=1000):
+def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, fraction=0.05, limit=1000):
     """
     process to find all possible eccDNA from bam and peak files
 
@@ -624,7 +677,8 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
         ratio (float, optional): maximum ratio of mismatch. Defaults to 10.
         min_insert_size (int, optional): minimum length for insert size that reads pair's insert size are large. Defaults to 1500.
-        times (int, optional): bootstrap times. Defaults to 1000.
+        error (int, optional): possible error mapping expand length. Defaults to 2.
+        fraction (float, optional): error align reads fraction. Defaults to 0.05.
         limit (int, optional): limit of output
     """
     # build a graph that within large insert enriched regions
@@ -654,7 +708,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
                 break
             for p, (region1, region2) in enumerate(circle, start=1):
                 chrom, start, end, strand, start_ci, end_ci = estimate_segment(
-                    region1, region2, bam, include, exclude, mapq, ratio, min_insert_size, times
+                    region1, region2, bam, include, exclude, mapq, ratio, min_insert_size, error, fraction
                 )
                 print(
                     f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}', file=f
@@ -686,7 +740,10 @@ def main():
         '-r', dest='ratio', help='only include reads with mismatch ratio <= FLOAT', default=0.05, type=float
     )
     parser.add_argument(
-        '-t', dest='times', help='bootstrap times', default=1000, type=int
+        '-e', dest='expand', help='possible error mapping expand length', default=2, type=int
+    )
+    parser.add_argument(
+        '-p', dest='fraction', help='FLOAT fraction reads treat as align error', default=0.05, type=float
     )
     parser.add_argument(
         '-m', dest='limit', help='maximum output circle.'
@@ -706,7 +763,7 @@ def main():
     run(
         args['<peaks>'], args['<bam>'], args['<bed>'], args['depth'],
         args['include'], args['exclude'], args['mapq'], args['ratio'],
-        args['length'], args['times'], args['limit']
+        args['length'], args['expand'], args['fraction'], args['limit']
     )
 
 
