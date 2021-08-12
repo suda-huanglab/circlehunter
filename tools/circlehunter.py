@@ -612,7 +612,7 @@ def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=10
             f, chrom, start, end, direction, include, exclude, mapq, ratio, min_insert_size
         )
     offset = OFFSET_FUNC[direction](large_pos)
-    hypo = np.arange(0, min_insert_size) + 1
+    hypo = np.arange(0, end - start) + 1
     abs_hypo = HYPO_TRANS[direction](offset, hypo) - 1
     large_sample = np.unique(np.abs(large_pos - offset)) + 1
     large_sample = large_sample[large_sample <= min_insert_size]
