@@ -515,7 +515,7 @@ def large_likelihood(h, d, p):
     pdf = 1 / h * (1 - p)
     pdf[h < d] = 0
     pdf += 1 / len(h) * p
-    return pdf / np.sum(pdf)
+    return pdf
 
 
 def large_posterior(hypo, sample, fraction=0.05):
@@ -556,7 +556,7 @@ def split_likelihood(h, d, e, p):
     """
     pdf = stats.norm.pdf(h, d, e / 2) * (1 - p)
     pdf += 1 / len(h) * p
-    return pdf / np.sum(pdf)
+    return pdf
 
 
 def split_posterior(hypo, sample, error=2, fraction=0.05):
