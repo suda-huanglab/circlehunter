@@ -8,25 +8,26 @@ rule verification_config:
     input:
         fasta=config['workspace'] + '/verification/genome/mock.fa',
         blacklist=config['workspace'] + '/verification/genome/mock.blacklist.bed',
+        mock=config['workspace'] + '/verification/genome/mock.ecDNA.bed',
         fai=config['workspace'] + '/verification/genome/mock.fa.fai',
         bwt=config['workspace'] + '/verification/genome/mock.fa.bwt',
         reads=[
-            config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{gsm}_chr22.list'
+            config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{gsm}_chr22.list'
             for gsm in config['samples']
         ],
         fastq=[
-            config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_{chrom}_{r}.fastq.gz'
+            config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_{chrom}_{r}.fastq.gz'
             for gsm in config['samples']
             for srr in config['samples'][gsm]
             for chrom in ('chr22', 'chrM')
             for r in (1, 2)
         ],
         depth=[
-            config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/foldchange/{gsm}_chrM_depth.value'
+            config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{gsm}_chrM_depth.value'
             for gsm in config['samples']
         ],
         all_fastq=[
-            config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_chrM_{foldchange}_{r}.fastq.gz'
+            config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_chrM_{foldchange}_{r}.fastq.gz'
             for gsm in config['samples']
             for srr in config['samples'][gsm]
             for foldchange in range(10, 101, 10)
@@ -49,7 +50,7 @@ rule verification_config:
         samples = {
             f'{gsm}_{foldchange}': {
                 f'{srr}_{chrom}': {
-                    f'fq{r}': config['workspace'] + f'/verification/samples/{gsm[:6]}/{gsm}/fastq/{srr}_{chrom}_{r}.fastq.gz'
+                    f'fq{r}': config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_{chrom}_{r}.fastq.gz'
                     for r in (1, 2)
                 }
                 for srr in config['samples'][gsm]
@@ -72,7 +73,8 @@ rule verification_config:
 rule mock_genome:
     output:
         fasta=config['workspace'] + '/verification/genome/mock.fa',
-        blacklist=config['workspace'] + '/verification/genome/mock.blacklist.bed'
+        blacklist=config['workspace'] + '/verification/genome/mock.blacklist.bed',
+        mock=config['workspace'] + '/verification/genome/mock.ecDNA.bed'
     input:
         fasta=config['genome']['fasta'],
         blacklist=config['genome']['blacklist']
@@ -102,6 +104,9 @@ rule mock_genome:
         blacklist[['chrom', 'start', 'end']].to_csv(
             output.blacklist, sep='\t', index=False, header=False
         )
+        with open(output.mock, 'w') as f:
+            f.write(f'chr23\t{l}\t{l + s}\tecDNA_1_1\t.\t+\n')
+            f.write(f'chr23\t{l + s + l}\t{l + s + l + s}\tecDNA_1_2\t.\t-\n')
 
 
 
@@ -125,7 +130,7 @@ rule bwa_index:
 
 rule reads_list:
     output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/fastq/{gsm}_{chrom}.list'
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{gsm}_{chrom}.list'
     input:
         bam=rules.merge.output,
         index=rules.index.output
@@ -139,7 +144,7 @@ rule reads_list:
 
 rule extract_reads:
     output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/fastq/{srr}_{chrom}_{r}.fastq.gz'
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{srr}_{chrom}_{r}.fastq.gz'
     input:
         reads=rules.reads_list.output,
         fq=lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr][f'fq{wildcards.r}']
@@ -150,25 +155,79 @@ rule extract_reads:
         ' | gzip -c > {output}'
 
 
-rule chrM_bed:
+rule bedgraph:
     output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/foldchange/{gsm}_chrM.bed'
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{gsm}_pileup.bdg'
     input:
         bam=rules.merge.output,
         index=rules.index.output
     shell:
-        'samtools idxstats {input.bam}'
-        ' | grep \'chrM\''
-        ' | awk \'BEGIN{{OFS="\\t"}}{{print $1, 0, $2}}\' > {output}'
+        'bedtools genomecov -bga -ibam {input.bam} > {output}'
 
 
-rule chrM_tag:
+rule control_depth:
     output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/foldchange/{gsm}_chrM_tag.bed'
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{gsm}_control_depth.value'
+    input:
+        rules.bedgraph.output
+    shell:
+        'grep \'^chr[0-9XY]\{{1,2\}}[[:space:]]\' {input}'
+        ' | awk \'{{LENGTH+=$3-$2;BASE+=$4*($3-$2)}}END{{print BASE/LENGTH}}\' > {output}'
+
+
+rule chrM_depth:
+    output:
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{gsm}_chrM_depth.value'
+    input:
+        rules.bedgraph.output
+    shell:
+        'grep \'^chrM\' {input} | awk \'{{LENGTH+=$3-$2;BASE+=$4*($3-$2)}}END{{print BASE/LENGTH}}\' > {output}'
+
+
+def get_step_num(wildcards):
+    filename = config['workspace'] + f'/verification/fastq/{wildcards.prefix}/{wildcards.gsm}/{wildcards.gsm}_control_depth.value'
+    with open(filename) as f:
+        control_depth = f.read().strip()
+    filename = config['workspace'] + f'/verification/fastq/{wildcards.prefix}/{wildcards.gsm}/{wildcards.gsm}_chrM_depth.value'
+    with open(filename) as f:
+        chrM_depth = f.read().strip()
+    ratio = float(control_depth) * float(wildcards.foldchange) / float(chrM_depth)
+    return int(1 / ratio) + 1
+
+
+rule split_reads:
+    output:
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{srr}_{chrom}_{foldchange}_{r}.fastq.gz'
+    input:
+        fastq=rules.extract_reads.output,
+        control=rules.control_depth.output,
+        chrM=rules.chrM_depth.output
+    params:
+        step=get_step_num
+    shell:
+        'zcat {input.fastq} | awk \'int((NR - 1) / 4) % {params.step} == 0\' | gzip -c > {output}'
+
+
+########################################################
+rule verification:
+    input:
+        [
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_ecDNA_genes.bed'
+            for gsm in config['samples']
+        ],
+        [
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/verification/{gsm}_ecDNA_deep.value'
+            for gsm in config['samples']
+        ]
+
+
+rule extract_tag:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/verification/{gsm}_ecDNA_tag.bed'
     input:
         bam=rules.merge.output,
         index=rules.index.output,
-        bed=rules.chrM_bed.output
+        bed=lambda wildcards: os.path.splitext(config['genome']['fasta'])[0] + '.ecDNA.bed'
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
         mapq=config['params']['mapq'],
@@ -179,39 +238,29 @@ rule chrM_tag:
         'python {params.script} -q {params.mapq} -f {params.include} -F {params.exclude} -r {params.mismatch} -L {input.bed} {input.bam} {output}'
 
 
-rule chrM_pileup:
+rule filter_tag:
     output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/foldchange/{gsm}_chrM.bdg'
+        config['workspace'] + '/samples/{prefix}/{gsm}/verification/{gsm}_ecDNA_filter.bed'
     input:
-        rules.chrM_tag.output
+        tag=rules.extract_tag.output,
+        bed=lambda wildcards: os.path.splitext(config['genome']['fasta'])[0] + '.ecDNA.bed'
+    shell:
+        'bedtools intersect -a {input.tag} -b {input.bed} > {output}'
+
+
+rule pileup_tag:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/verification/{gsm}_ecDNA_pileup.bdg'
+    input:
+        rules.filter_tag.output
     shell:
         'macs2 pileup -i {input} -f BEDPE -o {output}'
 
 
-rule chrM_depth:
+rule ecDNA_deep:
     output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/foldchange/{gsm}_chrM_depth.value'
+        config['workspace'] + '/samples/{prefix}/{gsm}/verification/{gsm}_ecDNA_deep.value'
     input:
-        rules.chrM_pileup.output
+        rules.pileup_tag.output
     shell:
-        'awk \'{{LENGTH+=$3-$2;BASE+=$4*($3-$2)}}END{{print BASE / LENGTH}}\' {input} > {output}'
-
-
-def get_step_num(wildcards):
-    import re
-    comment_depth = get_accessible_lambda(wildcards)
-    filename = config['workspace'] + f'/verification/samples/{wildcards.prefix}/{wildcards.gsm}/foldchange/{wildcards.gsm}_chrM_depth.value'
-    with open(filename) as f:
-        chrM_depth = f.read().strip()
-    return int(float(chrM_depth) / float(comment_depth)) // int(wildcards.foldchange) + 1
-
-
-rule split_reads:
-    output:
-        config['workspace'] + '/verification/samples/{prefix}/{gsm}/fastq/{srr}_{chrom}_{foldchange}_{r}.fastq.gz'
-    input:
-        rules.extract_reads.output
-    params:
-        step=get_step_num
-    shell:
-        'zcat {input} | awk \'int((NR - 1) / 4) % {params.step} == 0\' | gzip -c > {output}'
+        'awk \'$4>0{{LENGTH+=$3-$2;BASE+=$4*($3-$2)}}END{{print BASE / LENGTH}}\' {input} > {output}'
