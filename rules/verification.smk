@@ -212,7 +212,7 @@ rule split_reads:
 rule verification:
     input:
         [
-            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_ecDNA_genes.bed'
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_ecDNA.bed'
             for gsm in config['samples']
         ],
         [

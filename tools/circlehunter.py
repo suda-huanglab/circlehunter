@@ -649,18 +649,19 @@ def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ra
         tuple: genome range for the segment
     """
     if region1 < region2:
-        direction1, direction2 = '-', '+'
         strand = '+'
     else:
-        direction1, direction2 = '+', '-'
+        region1, region2 = region2, region1
         strand = '-'
     cl1, mle1, cr1 = estimate_breakpoint(
-        bam, *region1, direction1, include, exclude, mapq, ratio, min_insert_size, error, fraction
+        bam, *region1, '-', include, exclude, mapq, ratio, min_insert_size, error, fraction
     )
     cl2, mle2, cr2 = estimate_breakpoint(
-        bam, *region2, direction2, include, exclude, mapq, ratio, min_insert_size, error, fraction
+        bam, *region2, '+', include, exclude, mapq, ratio, min_insert_size, error, fraction
     )
-    return region1[0], mle1, mle2, strand, f'{cl1}-{cr1}', f'{cl2}-{cr2}'
+    pr1 = '{1}-{2}'.format(*region1)
+    pr2 = '{1}-{2}'.format(*region2)
+    return region1[0], mle1, mle2, strand, f'{cl1}-{cr1}', f'{cl2}-{cr2}', pr1, pr2
 
 
 def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, fraction=0.05, limit=1000):
@@ -707,11 +708,11 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
             if n > 0 and n > limit:
                 break
             for p, (region1, region2) in enumerate(circle, start=1):
-                chrom, start, end, strand, start_ci, end_ci = estimate_segment(
+                chrom, start, end, strand, start_ci, end_ci, pr1, pr2 = estimate_segment(
                     region1, region2, bam, include, exclude, mapq, ratio, min_insert_size, error, fraction
                 )
                 print(
-                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}', file=f
+                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}\t{pr1}\t{pr2}', file=f
                 )
 
 
