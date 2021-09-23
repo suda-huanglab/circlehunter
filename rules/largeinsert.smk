@@ -21,7 +21,16 @@ rule largeinsert_pileup:
     input:
         rules.largeinsert_tag.output
     shell:
-        'macs2 pileup -i {input} -f BEDPE -o {output}'
+        'macs2 pileup --extsize 750 -f BED -i {input} -o {output}'
+
+
+rule accessible_pileup:
+    output:
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_accessible_pileup.bdg')
+    input:
+        rules.accessible_tag.output
+    shell:
+        'macs2 pileup --extsize 750 -f BED -i {input} -o {output}'
 
 
 rule largeinsert_ratio_value:
@@ -29,7 +38,7 @@ rule largeinsert_ratio_value:
         temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_ratio.val')
     input:
         pileup=rules.largeinsert_pileup.output,
-        base=rules.accessible_peak.output.lambda_bdg
+        base=rules.accessible_pileup.output
     params:
         awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_ratio.awk'
     shell:

@@ -24,7 +24,7 @@ rule largeinsert_filter:
     params:
         awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_extractor.awk'
     shell:
-        'bedtools slop -b 1500 -g {input.chrom_size} -i {input.largeinsert}'
+        'bedtools slop -b 750 -g {input.chrom_size} -i {input.largeinsert}'
         ' | bedtools intersect -wb -a {input.accessible} -b stdin'
         ' | awk -f {params.awk} > {output}'
 

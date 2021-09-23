@@ -47,7 +47,8 @@ def run(in_bam, out_bed, regions=None, include=2, exclude=1024, mapq=10, ratio=0
             chrom = read.reference_name
             start = read.reference_start
             end = read.reference_end
-            bed.write(f'{chrom}\t{start}\t{end}\n')
+            strand = '-' if read.is_reverse else '+'
+            bed.write(f'{chrom}\t{start}\t{end}\t.\t.\t{strand}\n')
 
 
 def main():
