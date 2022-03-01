@@ -47,6 +47,9 @@ rule calling:
         mapq=config['params']['mapq'],
         include=config['params']['include'],
         exclude=config['params']['exclude'],
-        mismatch=config['params']['mismatch']
+        mismatch=config['params']['mismatch'],
+        limit=config['params'].get('limit', 100),
     shell:
-        'python {params.script} -q {params.mapq} -f {params.include} -F {params.exclude} -r {params.mismatch} -d {params.depth} {input.peaks} {input.bam} {output}'
+        'python {params.script} -q {params.mapq} -f {params.include}'
+        ' -F {params.exclude} -r {params.mismatch} -d {params.depth}'
+        ' -m {params.limit} {input.peaks} {input.bam} {output}'

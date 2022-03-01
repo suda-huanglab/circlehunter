@@ -110,7 +110,7 @@ rule mock_genome:
         with open(output.mock, 'w') as f:
             # motif shift
             f.write(f'chr23\t{l}\t{l + s}\tecDNA_1_1\t.\t+\n')
-            f.write(f'chr23\t{l + s + l}\t{l + s + l + s}\tecDNA_1_2\t.\t-\n')
+            f.write(f'chr23\t{l + s + l}\t{l + s + l + s + 1}\tecDNA_1_2\t.\t-\n')
 
 
 
