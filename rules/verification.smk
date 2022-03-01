@@ -2,6 +2,9 @@ from functools import lru_cache
 import os
 
 
+FOLDCHANGE_RANGES = 5, 51, 5
+
+
 rule verification_config:
     output:
         config['workspace'] + '/verification/verify.yaml'
@@ -30,7 +33,7 @@ rule verification_config:
             config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_chrM_{foldchange}_{r}.fastq.gz'
             for gsm in config['samples']
             for srr in config['samples'][gsm]
-            for foldchange in range(10, 101, 10)
+            for foldchange in range(*FOLDCHANGE_RANGES)
             for r in (1, 2)
         ]
     run:
@@ -46,7 +49,7 @@ rule verification_config:
             'blacklist': input.blacklist,
             'refgene': config['genome']['refgene']
         }
-        chroms = [f'chrM_{foldchange}' for foldchange in range(10, 101, 10)] + ['chrM']
+        chroms = [f'chrM_{foldchange}' for foldchange in range(*FOLDCHANGE_RANGES)] + ['chrM']
         samples = {
             f'{gsm}_{foldchange}': {
                 f'{srr}_{chrom}': {
@@ -57,7 +60,7 @@ rule verification_config:
                 for chrom in ('chr22', f'chrM_{foldchange}')
             }
             for gsm in config['samples']
-            for foldchange in range(10, 101, 10)
+            for foldchange in range(*FOLDCHANGE_RANGES)
         }
         verification = {
             'genome': genome,
@@ -105,6 +108,7 @@ rule mock_genome:
             output.blacklist, sep='\t', index=False, header=False
         )
         with open(output.mock, 'w') as f:
+            # motif shift
             f.write(f'chr23\t{l}\t{l + s}\tecDNA_1_1\t.\t+\n')
             f.write(f'chr23\t{l + s + l}\t{l + s + l + s}\tecDNA_1_2\t.\t-\n')
 
@@ -148,11 +152,10 @@ rule extract_reads:
     input:
         reads=rules.reads_list.output,
         fq=lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr][f'fq{wildcards.r}']
+    params:
+        script=os.path.dirname(workflow.snakefile) + '/tools/extractreads.py',
     shell:
-        'zcat {input.fq}'
-        ' | grep -wFf {input.reads} -A 3'
-        ' | grep -v \'^--\''
-        ' | gzip -c > {output}'
+        'python {params.script} {input.fq} {input.reads} {output}'
 
 
 rule bedgraph:
