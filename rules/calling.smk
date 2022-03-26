@@ -30,6 +30,8 @@ rule largeinsert_filter:
 
 
 def get_depth(wildcards):
+    if 'depth' in config['params']:
+        return config['params']['depth']
     l = float(get_accessible_lambda(wildcards))
     return int(stats.poisson.isf(0.05, l))
 
