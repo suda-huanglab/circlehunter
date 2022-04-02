@@ -39,3 +39,58 @@ rule accessible_merge:
     shell:
         'bedtools sort -g {input.chrom_size} -i {input.accessible}'
         ' | bedtools merge -d 12500 -i stdin -c 4,5 -o first,max > {output}'
+
+
+rule cutsites:
+    output:
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/accessible/{gsm}_cutsites.bed')
+    input:
+        bam=rules.merge.output,
+        index=rules.index.output,
+        bed=rules.clean_bed.output
+    params:
+        script=os.path.dirname(workflow.snakefile) + '/tools/cutsites.py',
+        include=lambda wildcards: config['params']['include'],
+        exclude=lambda wildcards: config['params']['exclude'],
+        mapq=lambda wildcards: config['params']['mapq']
+    shell:
+        'python {params.script} -f {params.include} -F {params.exclude} -q {params.mapq}'
+        ' -L {input.bed} {input.bam} {output}'
+
+
+rule sort_cutsites:
+    output:
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/accessible/{gsm}_cutsites.sorted.bed')
+    input:
+        rules.cutsites.output
+    shell:
+        'sort -k1,1V -k2,2n -k3,3n {input} > {output}'
+
+
+rule bgzip_cutsites:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/accessible/{gsm}_cutsites.sorted.bed.gz'
+    input:
+        rules.sort_cutsites.output
+    shell:
+        'bgzip -c {input} > {output}'
+
+
+rule cutsites_index:
+    output:
+        config['workspace'] + '/samples/{prefix}/{gsm}/accessible/{gsm}_cutsites.sorted.bed.gz.tbi'
+    input:
+        rules.bgzip_cutsites.output
+    shell:
+        'tabix {input}'
+
+
+rule generate_cutsites:
+    input:
+        [
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/accessible/{gsm}_cutsites.sorted.bed.gz'
+            for gsm in config['samples']
+        ] + [
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/accessible/{gsm}_cutsites.sorted.bed.gz.tbi'
+            for gsm in config['samples']
+        ]
