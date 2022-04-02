@@ -3,6 +3,11 @@ import os
 
 
 FOLDCHANGE_RANGES = 5, 51, 5
+READ_LENGTH_FOLDCHANGES = [30, 50]
+READ_LENGTH_RANGES = 35, 101, 5
+
+wildcard_constraints:
+    foldchange="\d+"
 
 
 rule verification_config:
@@ -35,6 +40,20 @@ rule verification_config:
             for srr in config['samples'][gsm]
             for foldchange in range(*FOLDCHANGE_RANGES)
             for r in (1, 2)
+        ] + [
+            config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_chr22_L{length}_{r}.fastq.gz'
+            for gsm in config['samples']
+            for srr in config['samples'][gsm]
+            for foldchange in READ_LENGTH_FOLDCHANGES
+            for length in range(*READ_LENGTH_RANGES)
+            for r in (1, 2)
+        ] + [
+            config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_chrM_{foldchange}_L{length}_{r}.fastq.gz'
+            for gsm in config['samples']
+            for srr in config['samples'][gsm]
+            for foldchange in READ_LENGTH_FOLDCHANGES
+            for length in range(*READ_LENGTH_RANGES)
+            for r in (1, 2)
         ]
     run:
         from pyfaidx import Fasta
@@ -50,7 +69,7 @@ rule verification_config:
             'refgene': config['genome']['refgene']
         }
         chroms = [f'chrM_{foldchange}' for foldchange in range(*FOLDCHANGE_RANGES)] + ['chrM']
-        samples = {
+        samples1 = {
             f'{gsm}_{foldchange}': {
                 f'{srr}_{chrom}': {
                     f'fq{r}': config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_{chrom}_{r}.fastq.gz'
@@ -62,6 +81,20 @@ rule verification_config:
             for gsm in config['samples']
             for foldchange in range(*FOLDCHANGE_RANGES)
         }
+        samples2 = {
+            f'{gsm}_{foldchange}_L{length}': {
+                f'{srr}_{chrom}_L{length}': {
+                    f'fq{r}': config['workspace'] + f'/verification/fastq/{gsm[:6]}/{gsm}/{srr}_{chrom}_L{length}_{r}.fastq.gz'
+                    for r in (1, 2)
+                }
+                for srr in config['samples'][gsm]
+                for chrom in ('chr22', f'chrM_{foldchange}')
+            }
+            for gsm in config['samples']
+            for foldchange in READ_LENGTH_FOLDCHANGES
+            for length in range(*READ_LENGTH_RANGES)
+        }
+        samples = {**samples1, **samples2}
         verification = {
             'genome': genome,
             'adapter': json.loads(json.dumps(config['adapter'])),
@@ -209,6 +242,15 @@ rule split_reads:
         step=get_step_num
     shell:
         'zcat {input.fastq} | awk \'int((NR - 1) / 4) % {params.step} == 0\' | gzip -c > {output}'
+
+
+rule trim_reads:
+    output:
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{srr}_{chrom}_L{length}_{r}.fastq.gz'
+    input:
+        config['workspace'] + '/verification/fastq/{prefix}/{gsm}/{srr}_{chrom}_{r}.fastq.gz'
+    shell:
+        'zcat {input} | awk \'{{if(NR % 4 % 2 == 0){{print(substr($0, 0, {wildcards.length}))}}else{{print($0)}}}}\' | gzip -c > {output}'
 
 
 ########################################################
