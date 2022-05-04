@@ -45,13 +45,15 @@ rule calling:
         index=rules.index.output
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/circlehunter.py',
-        depth=get_depth,
         mapq=config['params']['mapq'],
         include=config['params']['include'],
         exclude=config['params']['exclude'],
         mismatch=config['params']['mismatch'],
         limit=config['params'].get('limit', 100),
-    shell:
-        'python {params.script} -q {params.mapq} -f {params.include}'
-        ' -F {params.exclude} -r {params.mismatch} -d {params.depth}'
-        ' -m {params.limit} {input.peaks} {input.bam} {output}'
+    run:
+        depth = get_depth(wildcards)
+        shell((
+            f'python {params.script} -q {params.mapq} -f {params.include}'
+            f' -F {params.exclude} -r {params.mismatch} -d {depth}'
+            f' -m {params.limit} {input.peaks} {input.bam} {output}'
+        ))

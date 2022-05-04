@@ -58,10 +58,11 @@ rule largeinsert_ratio:
     input:
         base=rules.accessible_peak.output.lambda_bdg,
         ratio=rules.largeinsert_ratio_value.output
-    params:
-        ratio=get_largeinsert_ratio
-    shell:
-        'macs2 bdgopt -i {input.base} -m multiply -p {params.ratio} -o {output}'
+    run:
+        ratio = get_largeinsert_ratio(wildcards)
+        shell(
+            f'macs2 bdgopt -i {input.base} -m multiply -p {ratio} -o {output}'
+        )
 
 
 def get_accessible_lambda(wildcards):
@@ -77,10 +78,11 @@ rule largeinsert_lambda:
     input:
         largeinsert=rules.largeinsert_ratio.output,
         accessible=rules.accessible_peak.output.lambda_bdg
-    params:
-        minimum=get_accessible_lambda
-    shell:
-        'macs2 bdgopt -i {input.largeinsert} -m max -p {params.minimum} -o {output}'
+    run:
+        l = get_accessible_lambda(wildcards)
+        shell(
+            f'macs2 bdgopt -i {input.largeinsert} -m max -p {l} -o {output}'
+        )
 
 
 rule largeinsert_pvalue:
