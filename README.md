@@ -1,33 +1,40 @@
 # circlehunter
 
-## 流程总览
+circlehunter is a pipeline for identifying complex ecDNA using ATAC-Seq data.
 
-* [ ] ![images/rulegraph.png](images/rulegraph.png)
+## Pipeline Overview
 
-## 依赖安装
+![images/rulegraph.png](images/rulegraph.png)
 
-使用mamba自动安装所有依赖（conda的加速替代）
+## Dependencies
+
+All dependencies can be installed using `mamba`
 
 ```bash
+# install mamba in base environment
 conda install -n base -c conda-forge mamba
+# create new environment according to environment.yml
 mamba env create -f environment.yml
+# active the new environment
 conda activate circlehunter
 ```
 
-## 运行流程
+## Run the Pipeline
 
-首先需要创建一个本次分析的配置文件
-
-```bash
-mkdir project
-cd project
-cp dxpipe/config.yaml .
-```
-
-浏览检查配置文件内的所有配置项（所有配置项都是必须的），并按照注释进行更改。然后运行流程
+circlehunter use a `yaml` format config file to figure out all samples and their output, to run the analysis processes, a config file is needed. A config template is provided.
 
 ```bash
-snakemake --snakefile dapipe/Snakefile -j 10 --configfile config.yaml
+# make a directory for analysis
+mkdir workspace
+cd workspace
+# copy and edit the config file
+cp ../config-template.yaml config.yaml
 ```
 
-其中的`-j`是允许流程使用的最大进程数。
+modify the configuration file according to the template to fit your requirements, then run the pipeline by
+
+```bash
+snakemake --snakefile ../Snakefile -j 16 --configfile config.yaml
+```
+
+using `-j` option to specific maximum number of processes can be used by the pipeline. Check [snakemake documents](https://snakemake.readthedocs.io/) for more options.

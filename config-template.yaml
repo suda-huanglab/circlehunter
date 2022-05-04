@@ -1,35 +1,64 @@
-genomes:
-    hg38:
-        fasta: /share/references/hg38/fasta/hg38.fa
-        bwa_index: /share/references/hg38/bwa_index/hg38.fa
-        blacklist: /share/references/hg38/blacklist/hg38.blacklist.sorted.bed
-        refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
+genome:
+    # genome size, use hs as for human, check MACS2 document for more details
+    size: hs
+    # path to genome reference fasta
+    fasta: /share/references/hg38/fasta/hg38.fa
+    # path to genome bwa index
+    bwa_index: /share/references/hg38/bwa_index/hg38.fa
+    # path to sorted genome blacklist, download from ENCODE
+    blacklist: /share/references/hg38/blacklist/hg38.blacklist.sorted.bed
+    # gene annotation in bgzip bed format, must indexed using tabix, download from UCSC
+    refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
 
-adapter: /home/andy/Projects/circlehunter/resource/adapter.fa
+# path to ATAC-Seq adapter
+adapter: resource/adapter.fa
 
-assembly: hg38
-
+# reads filter parameters
 params:
+    # minimum mapq
     mapq: 10
+    # flag include
+    include: 1
+    # flag exclude
+    exclude: 1548
+    # maximum mismatch rate
+    mismatch: 0.02
+    # minimum depth for considering a junction coverage
+    depth: 10
+    # maximum output circle
+    limit: 1000
 
+# path to workspace, all final output and intermediate output will be written to this directory
+workspace: /path/to/circlehunter/workspace
 
-workspace: /mnt/1w/data2/andy/circlehunter
-
+# sample list
 samples:
-  GSM3318541:
-      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318541/SRR7642283/SRR7642283_1.fastq.gz
-      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318541/SRR7642283/SRR7642283_2.fastq.gz
-  GSM3318542:
-      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318542/SRR7642284/SRR7642284_1.fastq.gz
-      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318542/SRR7642284/SRR7642284_2.fastq.gz
-  GSM3318543:
-      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318543/SRR7642285/SRR7642285_1.fastq.gz
-      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM331/GSM3318543/SRR7642285/SRR7642285_2.fastq.gz
-  GSM4317807:
-    SRR11097202:
-      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317807/SRR11097202/SRR11097202_1.fastq.gz
-      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317807/SRR11097202/SRR11097202_2.fastq.gz
-  GSM4317808:
-    SRR11097203:
-      fq1: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317808/SRR11097203/SRR11097203_1.fastq.gz
-      fq2: /mnt/2w/data1/andy/raw_data/ncbi/GSM431/GSM4317808/SRR11097203/SRR11097203_2.fastq.gz
+  GSM3832731: # sample id
+    SRR8236755: # library id
+      fq1: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_1.fastq.gz # path to fastq of read1
+      fq2: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_2.fastq.gz # path to fastq of read2
+    # specific another library of the same sample here if needed
+    # circlehunter  will merge them automatically for you
+    # SRR8236755: 
+    #   fq1: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_1.fastq.gz
+    #   fq2: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_2.fastq.gz
+  GSM3832734:
+    SRR8236760:
+      fq1: /path/to/fastq/PRJNA506071/GSM3832734/SRR8236760/SRR8236760_1.fastq.gz
+      fq2: /path/to/fastq/PRJNA506071/GSM3832734/SRR8236760/SRR8236760_2.fastq.gz
+  GSM3832733:
+    SRR8236759:
+      fq1: /path/to/fastq/PRJNA506071/GSM3832733/SRR8236759/SRR8236759_1.fastq.gz
+      fq2: /path/to/fastq/PRJNA506071/GSM3832733/SRR8236759/SRR8236759_2.fastq.gz
+  GSM3832726:
+    SRR8236758:
+      fq1: /path/to/fastq/PRJNA506071/GSM3832726/SRR8236758/SRR8236758_1.fastq.gz
+      fq2: /path/to/fastq/PRJNA506071/GSM3832726/SRR8236758/SRR8236758_2.fastq.gz
+  GSM3832732:
+    SRR8236756:
+      fq1: /path/to/fastq/PRJNA506071/GSM3832732/SRR8236756/SRR8236756_2.fastq.gz
+      fq2: /path/to/fastq/PRJNA506071/GSM3832732/SRR8236756/SRR8236756_1.fastq.gz
+  GSM3832725:
+    SRR8236757:
+      fq1: /path/to/fastq/PRJNA506071/GSM3832725/SRR8236757/SRR8236757_1.fastq.gz
+      fq2: /path/to/fastq/PRJNA506071/GSM3832725/SRR8236757/SRR8236757_2.fastq.gz
