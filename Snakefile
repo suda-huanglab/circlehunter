@@ -5,12 +5,13 @@ include: 'rules/largeinsert.smk'
 include: 'rules/calling.smk'
 include: 'rules/annotate.smk'
 include: 'rules/cleanup.smk'
+include: 'rules/verification.smk'
 
 
 rule all:
     input:
         [
-            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_eccDNA_genes.bed'
+            config['workspace'] + f'/samples/{gsm[:6]}/{gsm}/calling/{gsm}_ecDNA_genes.bed'
             for gsm in config['samples']
         ],
         [

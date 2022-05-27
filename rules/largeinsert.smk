@@ -7,9 +7,12 @@ rule largeinsert_tag:
         bed=rules.clean_bed.output
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
-        mapq=config['params']['mapq']
+        mapq=config['params']['mapq'],
+        include=config['params']['include'],
+        exclude=config['params']['exclude'],
+        mismatch=config['params']['mismatch']
     shell:
-        'python {params.script} -q {params.mapq} -L {input.bed} -i 1500 {input.bam} {output}'
+        'python {params.script} -q {params.mapq} -f {params.include} -F {params.exclude} -r {params.mismatch} -L {input.bed} -i 1500 {input.bam} {output}'
 
 
 rule largeinsert_pileup:
@@ -18,7 +21,16 @@ rule largeinsert_pileup:
     input:
         rules.largeinsert_tag.output
     shell:
-        'macs2 pileup -i {input} -f BEDPE -o {output}'
+        'macs2 pileup --extsize 750 -f BED -i {input} -o {output}'
+
+
+rule accessible_pileup:
+    output:
+        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_accessible_pileup.bdg')
+    input:
+        rules.accessible_tag.output
+    shell:
+        'macs2 pileup --extsize 750 -f BED -i {input} -o {output}'
 
 
 rule largeinsert_ratio_value:
@@ -26,7 +38,7 @@ rule largeinsert_ratio_value:
         temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_ratio.val')
     input:
         pileup=rules.largeinsert_pileup.output,
-        base=rules.accessible_peak.output.lambda_bdg
+        base=rules.accessible_pileup.output
     params:
         awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_ratio.awk'
     shell:
@@ -46,10 +58,11 @@ rule largeinsert_ratio:
     input:
         base=rules.accessible_peak.output.lambda_bdg,
         ratio=rules.largeinsert_ratio_value.output
-    params:
-        ratio=get_largeinsert_ratio
-    shell:
-        'macs2 bdgopt -i {input.base} -m multiply -p {params.ratio} -o {output}'
+    run:
+        ratio = get_largeinsert_ratio(wildcards)
+        shell(
+            f'macs2 bdgopt -i {input.base} -m multiply -p {ratio} -o {output}'
+        )
 
 
 def get_accessible_lambda(wildcards):
@@ -65,10 +78,11 @@ rule largeinsert_lambda:
     input:
         largeinsert=rules.largeinsert_ratio.output,
         accessible=rules.accessible_peak.output.lambda_bdg
-    params:
-        minimum=get_accessible_lambda
-    shell:
-        'macs2 bdgopt -i {input.largeinsert} -m max -p {params.minimum} -o {output}'
+    run:
+        l = get_accessible_lambda(wildcards)
+        shell(
+            f'macs2 bdgopt -i {input.largeinsert} -m max -p {l} -o {output}'
+        )
 
 
 rule largeinsert_pvalue:
@@ -87,36 +101,16 @@ rule largeinsert_narrowPeak:
     input:
         rules.largeinsert_pvalue.output
     shell:
-        'macs2 bdgpeakcall -i {input} -c 1.301 -l 50 -g 1500 -o {output}'
+        'macs2 bdgpeakcall -i {input} -c 1.301 -l 50 -g 200 -o {output}'
 
 
-rule largeinsert_slop:
+rule largeinsert_merge:
     output:
-        temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_peaks_slop.bed')
+        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_peaks_merge.bed'
     input:
         peaks=rules.largeinsert_narrowPeak.output,
         chrom_size=rules.chrom_sizes.output
     shell:
-        'bedtools slop -b 1500 -g {input.chrom_size} -i {input.peaks}'
-        ' | bedtools sort -g {input.chrom_size} -i  stdin'
-        ' | bedtools merge -i stdin > {output}'
-
-
-rule largeinsert_accessible:
-    output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_accessible.bed'
-    input:
-        largeinsert=rules.largeinsert_slop.output,
-        accessible=rules.accessible_peak.output.peak,
-        chrom_size=rules.chrom_sizes.output
-    params:
-        accessible_filter=os.path.dirname(workflow.snakefile) + '/tools/accessible_filter.awk',
-        largeinsert_extractor=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_extractor.awk'
-    shell:
-        'bedtools sort -g {input.chrom_size} -i {input.accessible}'
-        ' | bedtools merge -d 12500 -i stdin -c 4,5 -o first,first '
-        ' | bedtools intersect -c -a stdin -b {input.largeinsert}'
-        ' | awk -f {params.accessible_filter}'
-        ' | bedtools intersect -wb -a stdin -b {input.largeinsert}'
-        ' | awk -f {params.largeinsert_extractor} > {output}'
+        'bedtools sort -g {input.chrom_size} -i {input.peaks}'
+        ' | bedtools merge -d 1500 -i stdin -c 4,5 -o first,max > {output}'
  

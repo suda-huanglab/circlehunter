@@ -47,7 +47,8 @@ def run(in_bam, out_bed, regions=None, include=2, exclude=1024, mapq=10, ratio=0
             chrom = read.reference_name
             start = read.reference_start
             end = read.reference_end
-            bed.write(f'{chrom}\t{start}\t{end}\n')
+            strand = '-' if read.is_reverse else '+'
+            bed.write(f'{chrom}\t{start}\t{end}\t.\t.\t{strand}\n')
 
 
 def main():
@@ -59,11 +60,11 @@ def main():
     )
     parser.add_argument(
         '-f', dest='include', help='only include reads with all  of the FLAGs in INT present',
-        default=1
+        default=1, type=int
     )
     parser.add_argument(
         '-F', dest='exclude', help='only include reads with none of the FLAGS in INT present',
-        default=1028
+        default=1028, type=int
     )
     parser.add_argument(
         '-q', dest='mapq', help='only include reads with mapping quality >= INT', default=10, type=int

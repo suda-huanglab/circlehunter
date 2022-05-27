@@ -13,7 +13,7 @@ rule mapping:
        samblaster=config['workspace'] + '/samples/{prefix}/{gsm}/log/{srr}_samblaster.log'
     params:
         rg='\'@RG\\tID:{srr}\\tSM:{gsm}\\tLB:{srr}\\tPL:ILLUMINA\'',
-        index=config['genomes'][config['assembly']]['bwa_index'],
+        index=config['genome']['bwa_index'],
         tmp=config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{srr}.tmp',
     threads: 8 if workflow.cores > 8 else workflow.cores
     shell:
@@ -68,28 +68,6 @@ rule clean_bed:
     input:
         rules.chrom_sizes.output
     params:
-        blacklist=config['genomes'][config['assembly']]['blacklist']
+        blacklist=config['genome']['blacklist']
     shell:
         'bedtools complement -g {input} -i {params.blacklist} > {output}'
-
-
-# rule clean_bam:
-#     output:
-#         temp(config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}_clean.sorted.bam')
-#     input:
-#         bam=rules.merge.output,
-#         bed=rules.clean_bed.output
-#     params:
-#         mapq=config['params']['mapq']
-#     shell:
-#         'samtools view -b -q {params.mapq} -f 1 -F 1036 -L {input.bed} {input.bam} > {output}'
-
-
-# rule clean_index:
-#     output:
-#         temp(config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}_clean.sorted.bam.bai')
-#     input:
-#         rules.clean_bam.output
-#     priority: 5
-#     shell:
-#         'samtools index {input}'
