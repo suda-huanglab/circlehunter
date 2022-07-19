@@ -1,0 +1,1 @@
+$4 > 0{LENGTH += $9;SUM += $8 / $4 * $9}END{print(SUM/LENGTH)}
