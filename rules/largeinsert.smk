@@ -20,8 +20,10 @@ rule largeinsert_pileup:
         temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_pileup.bdg')
     input:
         rules.largeinsert_tag.output
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_pileup.log'
     shell:
-        'macs2 pileup --extsize 750 -f BED -i {input} -o {output}'
+        'macs2 pileup --extsize 750 -f BED -i {input} -o {output} 2> {log}'
 
 
 rule accessible_pileup:
@@ -29,8 +31,10 @@ rule accessible_pileup:
         temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_accessible_pileup.bdg')
     input:
         rules.accessible_tag.output
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_accessible_pileup.log'
     shell:
-        'macs2 pileup --extsize 750 -f BED -i {input} -o {output}'
+        'macs2 pileup --extsize 750 -f BED -i {input} -o {output} 2> {log}'
 
 
 rule largeinsert_ratio_value:
@@ -58,10 +62,12 @@ rule largeinsert_ratio:
     input:
         base=rules.accessible_peak.output.lambda_bdg,
         ratio=rules.largeinsert_ratio_value.output
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_ratio.log'
     run:
         ratio = get_largeinsert_ratio(wildcards)
         shell(
-            f'macs2 bdgopt -i {input.base} -m multiply -p {ratio} -o {output}'
+            f'macs2 bdgopt -i {input.base} -m multiply -p {ratio} -o {output} 2> {log}'
         )
 
 
@@ -78,10 +84,12 @@ rule largeinsert_lambda:
     input:
         largeinsert=rules.largeinsert_ratio.output,
         accessible=rules.accessible_peak.output.lambda_bdg
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_lambda.log'
     run:
         l = get_accessible_lambda(wildcards)
         shell(
-            f'macs2 bdgopt -i {input.largeinsert} -m max -p {l} -o {output}'
+            f'macs2 bdgopt -i {input.largeinsert} -m max -p {l} -o {output} 2> {log}'
         )
 
 
@@ -91,8 +99,10 @@ rule largeinsert_pvalue:
     input:
         pileup_bdg=rules.largeinsert_pileup.output,
         lambda_bdg=rules.largeinsert_lambda.output
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_pvalue.log'
     shell:
-        'macs2 bdgcmp -t {input.pileup_bdg} -c {input.lambda_bdg} -m ppois -o {output}'
+        'macs2 bdgcmp -t {input.pileup_bdg} -c {input.lambda_bdg} -m ppois -o {output} 2> {log}'
 
 
 rule largeinsert_narrowPeak:
@@ -100,8 +110,10 @@ rule largeinsert_narrowPeak:
         config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_peaks.narrowPeak'
     input:
         rules.largeinsert_pvalue.output
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_narrowPeak.log'
     shell:
-        'macs2 bdgpeakcall -i {input} -c 1.301 -l 50 -g 200 -o {output}'
+        'macs2 bdgpeakcall -i {input} -c 1.301 -l 50 -g 200 -o {output} 2> {log}'
 
 
 rule largeinsert_merge:
@@ -110,7 +122,9 @@ rule largeinsert_merge:
     input:
         peaks=rules.largeinsert_narrowPeak.output,
         chrom_size=rules.chrom_sizes.output
+    log:
+        config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_merge.log'
     shell:
-        'bedtools sort -g {input.chrom_size} -i {input.peaks}'
+        'bedtools sort -g {input.chrom_size} -i {input.peaks}  2> {log}'
         ' | bedtools merge -d 1500 -i stdin -c 4,5 -o first,max > {output}'
  
