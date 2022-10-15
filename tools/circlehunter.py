@@ -709,12 +709,13 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
         for n, circle in enumerate(circles, start=1):
             if n > 0 and n > limit:
                 break
+            t = len(circle)
             for p, (region1, region2) in enumerate(circle, start=1):
                 chrom, start, end, strand, start_ci, end_ci, pr1, pr2 = estimate_segment(
                     region1, region2, bam, include, exclude, mapq, ratio, min_insert_size, error
                 )
                 print(
-                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}\t{pr1}\t{pr2}', file=f
+                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{t}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}\t{pr1}\t{pr2}', file=f
                 )
 
 
