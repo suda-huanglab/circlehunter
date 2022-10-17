@@ -57,6 +57,38 @@ def peaks2graph(peaks):
     return graph
 
 
+def max_motif_length(cigars):
+    """
+    Find the maximum length of the duplicate motif between two regions.
+
+    Args:
+        cigars (list): list of supplementary align reads' cigars
+    """
+    def motif_length(cigar1, cigar2):
+        total_c1 = sum(map(int, re.findall(r'(\d+)[MIDNSHP=XB]', cigar1)))
+        total_c2 = sum(map(int, re.findall(r'(\d+)[MIDNSHP=XB]', cigar2)))
+        if total_c1 != total_c2:
+            return 0
+
+        left_c1 = re.match(r'^((\d+)[MIDNP=XB])+\d+[HS]$', cigar1)
+        right_c1 = re.match(r'^\d+[HS]((\d+)[MIDNP=XB])$', cigar1)
+        if bool(left_c1) + bool(right_c1) != 1:
+            return 0
+        match_c1 = left_c1.groups()[1::2] if left_c1 else right_c1.groups()[1::2]
+
+        left_c2 = re.match(r'^((\d+)[MIDNP=XB])+\d+[HS]$', cigar2)
+        right_c2 = re.match(r'^\d+[HS]((\d+)[MIDNP=XB])$', cigar2)
+        if bool(left_c2) + bool(right_c2) != 1:
+            return 0
+        match_c2 = left_c2.groups()[1::2] if left_c2 else right_c2.groups()[1::2]
+
+        return sum(map(int, match_c1)) + sum(map(int, match_c2)) - total_c1
+    
+    
+    motifs = (motif_length(cigar1, cigar2) for cigar1, cigar2 in cigars)
+    return max(*(motif for motif in motifs if motif > 0), 0, 0)
+
+
 def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, ratio=0.05, length=1500):
     """
     count reads pairs span two different regions, which means these two region are connected
@@ -75,8 +107,12 @@ def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, ratio=0.05
     """
     # fetch reads from regions
     reads_pairs = defaultdict(lambda: defaultdict(list))
+    supplementary = defaultdict(lambda: defaultdict(list))
     for region in regions:
         for read in bam.fetch(*region):
+            if read.flag & 2048 and read.mapq >= mapq and read.has_tag('SA'):
+                cigars = read.cigarstring, read.get_tag('SA').split(',')[3]
+                supplementary[region][read.query_name].append(cigars)
             if not read.flag & include:
                 continue
             if read.flag & exclude:
@@ -110,8 +146,22 @@ def count_reads_pairs(bam, regions, include=1, exclude=1036, mapq=10, ratio=0.05
     pairs_count = Counter(
         (tuple(pair.values()) for pair in reads_pairs.values())
     )
+    
+    # filter supplementary reads with reads pairs
+    motifs = {
+        ((region1, strand1), (region2, strand2)): sum([
+            cigars for name, cigars in supplementary[region1].items() if name in reads_pairs
+        ], []) + sum([
+            cigars for name, cigars in supplementary[region2].items() if name in reads_pairs
+        ], [])
+        for (region1, strand1), (region2, strand2) in pairs_count.keys()
+    }
+    # calculate motif length
+    motifs = {
+        link: max_motif_length(cigars) for link, cigars in motifs.items()
+    }
 
-    return pairs_count.most_common()[::-1]
+    return pairs_count.most_common()[::-1], motifs
 
 
 def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500):
@@ -132,7 +182,7 @@ def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, r
         networkx.MultiGraph: graph that has been add new edges
     """
     # count reads pairs cross two enrich region
-    connections = count_reads_pairs(
+    connections, motifs = count_reads_pairs(
         bam, graph.nodes, include, exclude, mapq, ratio, min_insert_size
     )
     # connection nodes
@@ -141,7 +191,7 @@ def add_large_connections(graph, bam, limit, include=1, exclude=1036, mapq=10, r
             graph.add_edge(
                 node1, node2, LARGE, weight=count, strand={
                     node1: strand1, node2: strand2
-                }
+                }, motif=motifs[((node1, strand1), (node2, strand2))]
             )
 
     return graph
@@ -408,16 +458,20 @@ def ecDNA(graph):
         visited.add(sc)
         # rotate and extract segments form the circle
         segments = []
+        motifs = []
         circle, links = deque(circle), deque(links)
         begin = circle[0]
         while True:
             if links[0] == PEAK:
                 segments.append((circle[0], circle[1]))
+            else:
+                motifs.append(graph.edges[(circle[0], circle[1], LARGE)]['motif'])
             circle.rotate(-1)
             links.rotate(-1)
             if circle[0] == begin:
                 break
-        yield segments
+        motifs = zip(np.roll(motifs, 1), motifs)
+        yield segments, motifs
 
 
 def fetch_large_pos(bam, chrom, start, end, direction, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500):
@@ -518,7 +572,7 @@ def large_likelihood(hypo, data, error):
     """calculate likelihood for given hypothesis when observe a specific data
 
     Args:
-        hypo (np.array): array that contian hypothesis
+        hypo (np.array): array that contain hypothesis
         data (int): data being observe
         error (int): possible error mapping expand length
 
@@ -558,7 +612,7 @@ def split_likelihood(hypo, data, error=5):
     """calculate likelihood for given hypothesis when observe a specific data
 
     Args:
-        hypo (np.array): array that contian hypothesis
+        hypo (np.array): array that contain hypothesis
         data (int): data being observe
         error (int): possible error mapping expand length
 
@@ -634,12 +688,14 @@ def estimate_breakpoint(bam, chrom, start, end, direction, include=1, exclude=10
     return cl, mle, cr
 
 
-def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, fraction=0.05):
+def estimate_segment(region1, region2, motif1, motif2, bam, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, fraction=0.05):
     """estimate a segments range and confidence intervals
 
     Args:
         region1 (tuple): large insert enriched region
         region2 (tuple): large insert enriched region
+        motif1 (int): motif length of region1
+        motif2 (int): motif length of region2
         bam (pysam.AlignmentFile): opened bam file
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
@@ -655,6 +711,7 @@ def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ra
         strand = '+'
     else:
         region1, region2 = region2, region1
+        motif1, motif2 = motif2, motif1
         strand = '-'
     cl1, mle1, cr1 = estimate_breakpoint(
         bam, *region1, '-', include, exclude, mapq, ratio, min_insert_size, error
@@ -662,9 +719,11 @@ def estimate_segment(region1, region2, bam, include=1, exclude=1036, mapq=10, ra
     cl2, mle2, cr2 = estimate_breakpoint(
         bam, *region2, '+', include, exclude, mapq, ratio, min_insert_size, error
     )
+    ci1 =  f'{cl1}-{cr1 + motif1}'
+    ci2 = f'{cl2 - motif2}-{cr2}'
     pr1 = '{1}-{2}'.format(*region1)
     pr2 = '{1}-{2}'.format(*region2)
-    return region1[0], mle1, mle2, strand, f'{cl1}-{cr1}', f'{cl2}-{cr2}', pr1, pr2
+    return region1[0], mle1, mle2, strand, ci1, ci2, pr1, pr2
 
 
 def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05, min_insert_size=1500, error=2, limit=100):
@@ -675,7 +734,7 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
         peaks (str): path to the peaks file
         bam (str): path to the bam file
         out (str): path to the output file
-        min_depth (int): the minimun depth of connection
+        min_depth (int): the minimum depth of connection
         include (int, optional): only include reads within these flags. Defaults to 1.
         exclude (int, optional): exclude reads within these flags. Defaults to 1036.
         mapq (int, optional): minimum mapq for accepted reads. Defaults to 10.
@@ -706,13 +765,13 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
     circles = ecDNA(graph)
     # output
     with open(out, 'w') as f:
-        for n, circle in enumerate(circles, start=1):
+        for n, (circle, motif) in enumerate(circles, start=1):
             if n > 0 and n > limit:
                 break
             t = len(circle)
-            for p, (region1, region2) in enumerate(circle, start=1):
+            for p, ((region1, region2), (motif1, motif2)) in enumerate(zip(circle, motif), start=1):
                 chrom, start, end, strand, start_ci, end_ci, pr1, pr2 = estimate_segment(
-                    region1, region2, bam, include, exclude, mapq, ratio, min_insert_size, error
+                    region1, region2, motif1, motif2, bam, include, exclude, mapq, ratio, min_insert_size, error
                 )
                 print(
                     f'{chrom}\t{start}\t{end}\tecDNA_{n}_{t}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}\t{pr1}\t{pr2}', file=f
