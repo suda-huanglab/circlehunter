@@ -5,7 +5,7 @@ include: 'rules/largeinsert.smk'
 include: 'rules/calling.smk'
 include: 'rules/annotate.smk'
 include: 'rules/cleanup.smk'
-include: 'rules/verification.smk'
+include: 'rules/simulation.smk'
 
 
 rule all:

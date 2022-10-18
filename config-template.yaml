@@ -3,6 +3,8 @@ genome:
     size: hs
     # path to genome reference fasta
     fasta: /share/references/hg38/fasta/hg38.fa
+    # path to reference genome size file
+    chrom_sizes: /share/references/hg38/fasta/hg38.chrom.sizes
     # path to genome bwa index
     bwa_index: /share/references/hg38/bwa_index/hg38.fa
     # path to sorted genome blacklist, download from ENCODE
