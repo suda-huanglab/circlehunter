@@ -1,5 +1,8 @@
+# ecDNA
 SEED = 1665331200
 NUM = 5
+# reads
+READ_LENGTH_RANGES = 35, 101, 5
 
 
 checkpoint mock_ecDNA:
@@ -64,3 +67,31 @@ rule merge_fasta:
         get_all_ecDNA_fasta
     shell:
         'cat {input} > {output}'
+
+
+rule trim_reads:
+    output:
+        config['workspace'] + '/simulation/fastq/{prefix}/{gsm}/{srr}_L{length}_{r}.fastq.gz'
+    input:
+        lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr][f'fq{wildcards.r}']
+    shell:
+        'zcat {input}'
+        ' | awk \'{{if(NR % 4 % 2 == 0){{print(substr($0, 0, {wildcards.length}))}}else{{print($0)}}}}\''
+        ' | gzip -c > {output}'
+
+
+def get_all_samples_fastq(wildcards):
+    return sum([
+        [
+            config['workspace'] + f'/simulation/fastq/{gsm[:6]}/{gsm}/{srr}_L{length}_{r}.fastq.gz'
+            for srr in config['samples'][gsm]
+            for length in range(*READ_LENGTH_RANGES)
+            for r in (1, 2)
+        ]
+        for gsm in config['samples']
+    ], [])
+
+
+rule generate_fastq:
+    input:
+        get_all_samples_fastq
