@@ -2,7 +2,10 @@
 SEED = 1665331200
 NUM = 5
 # reads
-READ_LENGTH_RANGES = 35, 101, 5
+READ_LENGTH_RANGES = [35, 50, 75, 100]
+READ_DEPTH_RANGES = [10, 20, 30, 40, 50]
+FRAGMENT_SIZE_MEAN = 250
+FRAGMENT_SIZE_STD = 180
 
 
 checkpoint mock_ecDNA:
@@ -71,7 +74,7 @@ rule merge_fasta:
 
 rule trim_reads:
     output:
-        config['workspace'] + '/simulation/fastq/{prefix}/{gsm}/{srr}_L{length}_{r}.fastq.gz'
+        config['workspace'] + '/simulation/chrom-fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
     input:
         lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr][f'fq{wildcards.r}']
     shell:
@@ -81,17 +84,64 @@ rule trim_reads:
 
 
 def get_all_samples_fastq(wildcards):
-    return sum([
+    fastq_files = sum([
         [
-            config['workspace'] + f'/simulation/fastq/{gsm[:6]}/{gsm}/{srr}_L{length}_{r}.fastq.gz'
+            (
+                config['workspace'] + f'/simulation/chrom-fastq/{gsm[:6]}/'
+                f'{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
+            )
             for srr in config['samples'][gsm]
-            for length in range(*READ_LENGTH_RANGES)
+            for length in READ_LENGTH_RANGES
             for r in (1, 2)
         ]
         for gsm in config['samples']
     ], [])
+    return fastq_files
+
+
+rule mock_reads:
+    output:
+        temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_1.fq'),
+        temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_2.fq')
+    input:
+        config['workspace'] + '/simulation/ecDNA/mock-ecDNA.fa/ecDNA_{no}.fa'
+    params:
+        seed=SEED,
+        mean=FRAGMENT_SIZE_MEAN,
+        std=FRAGMENT_SIZE_STD,
+        output=config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_'
+    shell:
+        'art_illumina -rs {params.seed} -m {params.mean} -s {params.std} -p -na'
+        ' -f {wildcards.depth} -l {wildcards.length} -i {input} -o {params.output}'
+
+
+rule compress_mock_reads:
+    output:
+        config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq.gz'
+    input:
+        config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq'
+    shell:
+        'gzip -c {input} > {output}'
+
+
+def get_all_ecDNA_fastq(wildcards):
+    out = checkpoints.mock_ecDNA.get(**wildcards).output['fasta']
+    ecDNAs = glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no
+    fastq_files = [
+        (
+            config['workspace'] + f'/simulation/ecDNA_fastq/'
+            f'D{depth}/L{length}/ecDNA_{no}_{r}.fq.gz'
+        )
+        for depth in READ_DEPTH_RANGES
+        for length in READ_LENGTH_RANGES
+        for no in ecDNAs
+        for r in (1, 2)
+    ]
+    print(fastq_files)
+    return fastq_files
 
 
 rule generate_fastq:
     input:
-        get_all_samples_fastq
+        get_all_samples_fastq,
+        get_all_ecDNA_fastq
