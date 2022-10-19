@@ -10,8 +10,8 @@ FRAGMENT_SIZE_STD = 180
 
 checkpoint mock_ecDNA:
     output:
-        bed=config['workspace'] + '/simulation/ecDNA/mock-ecDNA.bed',
-        fasta=directory(config['workspace'] + '/simulation/ecDNA/mock-ecDNA.fa')
+        bed=config['workspace'] + '/simulation/ecDNA/mock_ecDNA.bed',
+        fasta=directory(config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa')
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/mock.py',
         num=NUM,
@@ -26,7 +26,7 @@ checkpoint mock_ecDNA:
         chrom_sizes=config['genome']['chrom_sizes'],
         blacklist=config['genome']['blacklist'],
         fasta=config['genome']['fasta'],
-        output=config['workspace'] + '/simulation/ecDNA/mock-ecDNA'
+        output=config['workspace'] + '/simulation/ecDNA/mock_ecDNA'
     threads:
         workflow.cores
     benchmark:
@@ -43,9 +43,9 @@ checkpoint mock_ecDNA:
 
 rule get_fasta:
     output:
-        config['workspace'] + '/simulation/ecDNA/mock-ecDNA.fa/ecDNA_{no}.fa'
+        config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa/ecDNA_{no}.fa'
     input:
-        config['workspace'] + '/simulation/ecDNA/mock-ecDNA.fa/ecDNA_{no}.bed'
+        config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa/ecDNA_{no}.bed'
     params:
         fasta=config['genome']['fasta']
     shell:
@@ -65,7 +65,7 @@ def get_all_ecDNA_fasta(wildcards):
 
 rule merge_fasta:
     output:
-        config['workspace'] + '/simulation/ecDNA/mock-ecDNA-merged.fa'
+        config['workspace'] + '/simulation/ecDNA/mock_ecDNA_merged.fa'
     input:
         get_all_ecDNA_fasta
     shell:
@@ -74,7 +74,7 @@ rule merge_fasta:
 
 rule trim_reads:
     output:
-        config['workspace'] + '/simulation/chrom-fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
+        config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
     input:
         lambda wildcards: config['samples'][wildcards.gsm]['fastq'][wildcards.srr][f'fq{wildcards.r}']
     shell:
@@ -87,7 +87,7 @@ def get_all_samples_fastq(wildcards):
     fastq_files = sum([
         [
             (
-                config['workspace'] + f'/simulation/chrom-fastq/{gsm[:6]}/'
+                config['workspace'] + f'/simulation/chrom_fastq/{gsm[:6]}/'
                 f'{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
             )
             for srr in config['samples'][gsm]['fastq']
@@ -104,7 +104,7 @@ rule mock_reads:
         temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_1.fq'),
         temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_2.fq')
     input:
-        config['workspace'] + '/simulation/ecDNA/mock-ecDNA.fa/ecDNA_{no}.fa'
+        config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa/ecDNA_{no}.fa'
     params:
         seed=SEED,
         mean=FRAGMENT_SIZE_MEAN,
@@ -137,8 +137,21 @@ def get_all_ecDNA_fastq(wildcards):
         for no in ecDNAs
         for r in (1, 2)
     ]
-    print(fastq_files)
     return fastq_files
+
+
+use rule trim as trim_chrom_reads with:
+    output:
+        fq1=temp(config['workspace'] + '/simulation/chrom_preprocess/{prefix}/{gsm}/L{length}/{srr}_L{length}_r1.trimed.fq.gz'),
+        fq2=temp(config['workspace'] + '/simulation/chrom_preprocess/{prefix}/{gsm}/L{length}/{srr}_L{length}_r2.trimed.fq.gz'),
+        json=config['workspace'] + '/simulation/chrom_qc/{prefix}/{gsm}/L{length}/{srr}_L{length}_fastp.json',
+        html=config['workspace'] + '/simulation/chrom_qc/{prefix}/{gsm}/L{length}/{srr}_L{length}_fastp.html'
+    input:
+        adapter=config['adapter'],
+        fq1=config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_1.fastq.gz',
+        fq2=config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_2.fastq.gz',
+    log:
+        config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_fastp.log'
 
 
 rule generate_fastq:
