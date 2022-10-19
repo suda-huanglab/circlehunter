@@ -13,7 +13,7 @@ genome:
     refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
 
 # path to ATAC-Seq adapter
-adapter: resource/adapter.fa
+adapter: /path/to/resource/adapter.fa
 
 # reads filter parameters
 params:
@@ -36,31 +36,17 @@ workspace: /path/to/circlehunter/workspace
 # sample list
 samples:
   GSM3832731: # sample id
-    SRR8236755: # library id
-      fq1: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_1.fastq.gz # path to fastq of read1
-      fq2: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_2.fastq.gz # path to fastq of read2
-    # specific another library of the same sample here if needed
-    # circlehunter  will merge them automatically for you
-    # SRR8236755: 
-    #   fq1: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_1.fastq.gz
-    #   fq2: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_2.fastq.gz
-  GSM3832734:
-    SRR8236760:
-      fq1: /path/to/fastq/PRJNA506071/GSM3832734/SRR8236760/SRR8236760_1.fastq.gz
-      fq2: /path/to/fastq/PRJNA506071/GSM3832734/SRR8236760/SRR8236760_2.fastq.gz
-  GSM3832733:
-    SRR8236759:
-      fq1: /path/to/fastq/PRJNA506071/GSM3832733/SRR8236759/SRR8236759_1.fastq.gz
-      fq2: /path/to/fastq/PRJNA506071/GSM3832733/SRR8236759/SRR8236759_2.fastq.gz
-  GSM3832726:
-    SRR8236758:
-      fq1: /path/to/fastq/PRJNA506071/GSM3832726/SRR8236758/SRR8236758_1.fastq.gz
-      fq2: /path/to/fastq/PRJNA506071/GSM3832726/SRR8236758/SRR8236758_2.fastq.gz
+    fastq:
+      SRR8236755: # library id
+        # path to fastq of read1
+        fq1: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_1.fastq.gz
+        # path to fastq of read2
+        fq2: /path/to/fastq/PRJNA506071/GSM3832731/SRR8236755/SRR8236755_2.fastq.gz
+      # specific another library of the same sample like upon if needed
+      # circlehunter will merge them automatically for you
   GSM3832732:
-    SRR8236756:
-      fq1: /path/to/fastq/PRJNA506071/GSM3832732/SRR8236756/SRR8236756_2.fastq.gz
-      fq2: /path/to/fastq/PRJNA506071/GSM3832732/SRR8236756/SRR8236756_1.fastq.gz
-  GSM3832725:
-    SRR8236757:
-      fq1: /path/to/fastq/PRJNA506071/GSM3832725/SRR8236757/SRR8236757_1.fastq.gz
-      fq2: /path/to/fastq/PRJNA506071/GSM3832725/SRR8236757/SRR8236757_2.fastq.gz
+    bam:
+      # bam file as input, circlehunter will use the aligned and sorted bam file instead
+      SRR8236756: /path/to/bam/PRJNA506071/GSM3832732/SRR8236756/SRR8236756.sorted.bam
+      # specific another library of the same sample like upon if needed
+      # circlehunter will merge them automatically for you

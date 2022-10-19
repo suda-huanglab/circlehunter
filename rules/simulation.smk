@@ -76,7 +76,7 @@ rule trim_reads:
     output:
         config['workspace'] + '/simulation/chrom-fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
     input:
-        lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr][f'fq{wildcards.r}']
+        lambda wildcards: config['samples'][wildcards.gsm]['fastq'][wildcards.srr][f'fq{wildcards.r}']
     shell:
         'zcat {input}'
         ' | awk \'{{if(NR % 4 % 2 == 0){{print(substr($0, 0, {wildcards.length}))}}else{{print($0)}}}}\''
@@ -90,7 +90,7 @@ def get_all_samples_fastq(wildcards):
                 config['workspace'] + f'/simulation/chrom-fastq/{gsm[:6]}/'
                 f'{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
             )
-            for srr in config['samples'][gsm]
+            for srr in config['samples'][gsm]['fastq']
             for length in READ_LENGTH_RANGES
             for r in (1, 2)
         ]

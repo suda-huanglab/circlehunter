@@ -23,11 +23,23 @@ rule mapping:
 
 
 def get_all_bam(wildcards):
-    return [
-        config['workspace'] + f'/samples/{wildcards.gsm[:6]}/{wildcards.gsm}/' \
-                              f'mapping/{srr}.sorted.bam'
-        for srr in config['samples'][wildcards.gsm]
-    ]
+    bam_files = []
+    # bam as input
+    if 'bam' in config['samples'][wildcards.gsm]:
+        bam_files += [
+            config['samples'][wildcards.gsm]['bam'][srr]
+            for srr in config['samples'][wildcards.gsm]['bam']
+        ]
+    # fastq as input
+    if 'fastq' in config['samples'][wildcards.gsm]:
+        bam_files += [
+            (
+                config['workspace'] + f'/samples/{wildcards.gsm[:6]}'
+                f'/{wildcards.gsm}/mapping/{srr}.sorted.bam'
+            )
+            for srr in config['samples'][wildcards.gsm]['fastq']
+        ]
+    return bam_files
 
 
 rule merge:
