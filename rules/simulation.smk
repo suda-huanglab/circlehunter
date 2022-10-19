@@ -154,6 +154,21 @@ use rule trim as trim_chrom_reads with:
         config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_fastp.log'
 
 
+use rule mapping as mapping_chrom_reads with:
+    output:
+        config['workspace'] + '/simulation/chrom_mapping/{prefix}/{gsm}/L{length}/{srr}_L{length}.sorted.bam'
+    input:
+        fq1=rules.trim_chrom_reads.output.fq1,
+        fq2=rules.trim_chrom_reads.output.fq2
+    log:
+       bwa=config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_bwa.log',
+       samblaster=config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_samblaster.log'
+    params:
+        rg='\'@RG\\tID:{srr}_L{length}\\tSM:{gsm}\\tLB:{srr}_L{length}\\tPL:ILLUMINA\'',
+        index=config['genome']['bwa_index'],
+        tmp=config['workspace'] + '/simulation/chrom_mapping/{prefix}/{gsm}/L{length}/{srr}_L{length}.tmp',
+
+
 rule generate_fastq:
     input:
         get_all_samples_fastq,
