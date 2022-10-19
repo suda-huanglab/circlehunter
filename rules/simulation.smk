@@ -169,6 +169,35 @@ use rule mapping as mapping_chrom_reads with:
         tmp=config['workspace'] + '/simulation/chrom_mapping/{prefix}/{gsm}/L{length}/{srr}_L{length}.tmp',
 
 
+use rule trim as trim_ecNDA_reads with:
+    output:
+        fq1=temp(config['workspace'] + '/simulation/ecDNA_preprocess/D{depth}/L{length}/ecDNA_{no}_1.fq.gz'),
+        fq2=temp(config['workspace'] + '/simulation/ecDNA_preprocess/D{depth}/L{length}/ecDNA_{no}_2.fq.gz'),
+        json=config['workspace'] + '/simulation/ecDNA_qc/D{depth}/L{length}/ecDNA_{no}_fastp.json',
+        html=config['workspace'] + '/simulation/ecDNA_qc/D{depth}/L{length}/ecDNA_{no}_fastp.html'
+    input:
+        adapter=config['adapter'],
+        fq1=config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_1.fq.gz',
+        fq2=config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_2.fq.gz',
+    log:
+        config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_fastp.log'
+
+
+use rule mapping as mapping_ecDNA_reads with:
+    output:
+        config['workspace'] + '/simulation/ecDNA_mapping/D{depth}/L{length}/ecDNA_{no}.sorted.bam'
+    input:
+        fq1=rules.trim_ecNDA_reads.output.fq1,
+        fq2=rules.trim_ecNDA_reads.output.fq2
+    log:
+       bwa=config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_bwa.log',
+       samblaster=config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_samblaster.log'
+    params:
+        rg='\'@RG\\tID:ecDNA_{no}_D{depth}_L{length}\\tSM:ecDNA_{no}\\tLB:ecDNA_{no}_D{depth}_L{length}\\tPL:ILLUMINA\'',
+        index=config['genome']['bwa_index'],
+        tmp=config['workspace'] + '/simulation/ecDNA_mapping/D{depth}/L{length}/ecDNA_{no}.tmp',
+
+
 rule generate_fastq:
     input:
         get_all_samples_fastq,
