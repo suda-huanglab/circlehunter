@@ -105,6 +105,8 @@ rule mock_reads:
         temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_2.fq')
     input:
         config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa/ecDNA_{no}.fa'
+    log:
+        config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_art.log'
     params:
         seed=SEED,
         mean=FRAGMENT_SIZE_MEAN,
@@ -112,7 +114,7 @@ rule mock_reads:
         output=config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_'
     shell:
         'art_illumina -rs {params.seed} -m {params.mean} -s {params.std} -p -na'
-        ' -f {wildcards.depth} -l {wildcards.length} -i {input} -o {params.output}'
+        ' -f {wildcards.depth} -l {wildcards.length} -i {input} -o {params.output} > {log} 2>&1'
 
 
 rule compress_mock_reads:
