@@ -6,7 +6,9 @@ rule accessible_filter:
         config['workspace'] + '/samples/{prefix}/{gsm}/calling/{gsm}_accessible_filter.bed'
     input:
         accessible=rules.accessible_merge.output,
-        largeinsert=rules.largeinsert_merge.output,
+        largeinsert=rules.largeinsert_merge.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_filter.txt'
     params:
         awk=os.path.dirname(workflow.snakefile) + '/tools/accessible_filter.awk'
     shell:
@@ -21,6 +23,8 @@ rule largeinsert_filter:
         accessible=rules.accessible_filter.output,
         largeinsert=rules.largeinsert_merge.output,
         chrom_size=rules.chrom_sizes.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_filter.txt'
     params:
         awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_extractor.awk'
     shell:
@@ -43,6 +47,8 @@ rule calling:
         peaks=rules.largeinsert_filter.output,
         bam=rules.merge.output,
         index=rules.index.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_calling.txt'
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/circlehunter.py',
         mapq=config['params']['mapq'],
