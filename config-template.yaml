@@ -50,3 +50,33 @@ samples:
       SRR8236756: /path/to/bam/PRJNA506071/GSM3832732/SRR8236756/SRR8236756.sorted.bam
       # specific another library of the same sample like upon if needed
       # circlehunter will merge them automatically for you
+
+# ## following config only use in simulation
+# simulation:
+#     # random seed
+#     seed: 1665331200
+#     # number of ecDNA mix in one sample
+#     num: 2
+#     # benchmark one sample repeat times
+#     repeat: 5
+
+#     # simulation reads fragment size
+#     fragment_size_mean: 250
+#     fragment_size_std: 180
+
+#     # read coverage params
+#     read_depth_test_length: 100
+#     read_depth_ranges:
+#         - 10
+#         - 20
+#         - 30
+#         - 40
+#         - 50
+
+#     # read length params
+#     read_length_test_depth: 30
+#     read_length_ranges:
+#         - 35
+#         - 50
+#         - 75
+#         - 100

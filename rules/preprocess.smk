@@ -6,8 +6,8 @@ rule trim:
         html=config['workspace'] + '/samples/{prefix}/{gsm}/qc/{srr}_fastp.html'
     input:
         adapter=config['adapter'],
-        fq1=lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr]['fq1'],
-        fq2=lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr]['fq2']
+        fq1=lambda wildcards: config['samples'][wildcards.gsm]['fastq'][wildcards.srr]['fq1'],
+        fq2=lambda wildcards: config['samples'][wildcards.gsm]['fastq'][wildcards.srr]['fq2']
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{srr}_fastp.log'
     threads: 8 if workflow.cores > 8 else workflow.cores

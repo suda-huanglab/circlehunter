@@ -1,11 +1,20 @@
+## get params from config file
 # ecDNA
-SEED = 1665331200
-NUM = 5
+SEED = config['simulation']['seed']
+NUM = config['simulation']['num']
+REPEAT = config['simulation']['repeat']
+
 # reads
-READ_LENGTH_RANGES = [35, 50, 75, 100]
-READ_DEPTH_RANGES = [10, 20, 30, 40, 50]
-FRAGMENT_SIZE_MEAN = 250
-FRAGMENT_SIZE_STD = 180
+FRAGMENT_SIZE_MEAN = config['simulation']['fragment_size_mean']
+FRAGMENT_SIZE_STD = config['simulation']['fragment_size_std']
+
+# depth test
+READ_DEPTH_RANGES = config['simulation']['read_depth_ranges']
+READ_DEPTH_TEST_LENGTH = config['simulation']['read_depth_test_length']
+
+# length test
+READ_LENGTH_RANGES = config['simulation']['read_length_ranges']
+READ_LENGTH_TEST_DEPTH = config['simulation']['read_length_test_depth']
 
 
 checkpoint mock_ecDNA:
@@ -14,7 +23,7 @@ checkpoint mock_ecDNA:
         fasta=directory(config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa')
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/mock.py',
-        num=NUM,
+        num=NUM * REPEAT,
         multiply=6,
         seed=SEED,
         length_loc=12,
@@ -168,7 +177,20 @@ use rule mapping as mapping_chrom_reads with:
     params:
         rg='\'@RG\\tID:{srr}_L{length}\\tSM:{gsm}\\tLB:{srr}_L{length}\\tPL:ILLUMINA\'',
         index=config['genome']['bwa_index'],
-        tmp=config['workspace'] + '/simulation/chrom_mapping/{prefix}/{gsm}/L{length}/{srr}_L{length}.tmp',
+        tmp=config['workspace'] + '/simulation/chrom_mapping/{prefix}/{gsm}/L{length}/{srr}_L{length}.tmp'
+
+
+def get_all_samples_bam(wildcards):
+    bam_files = [
+        (
+            config['workspace'] + '/simulation/chrom_mapping/'
+            f'{gsm[:6]}/{gsm}/L{length}/{srr}_L{length}.sorted.bam'
+        )
+        for gsm in config['samples']
+        for srr in config['samples'][gsm]['fastq']
+        for length in READ_LENGTH_RANGES
+    ]
+    return bam_files
 
 
 use rule trim as trim_ecNDA_reads with:
@@ -197,10 +219,81 @@ use rule mapping as mapping_ecDNA_reads with:
     params:
         rg='\'@RG\\tID:ecDNA_{no}_D{depth}_L{length}\\tSM:ecDNA_{no}\\tLB:ecDNA_{no}_D{depth}_L{length}\\tPL:ILLUMINA\'',
         index=config['genome']['bwa_index'],
-        tmp=config['workspace'] + '/simulation/ecDNA_mapping/D{depth}/L{length}/ecDNA_{no}.tmp',
+        tmp=config['workspace'] + '/simulation/ecDNA_mapping/D{depth}/L{length}/ecDNA_{no}.tmp'
 
 
-rule generate_fastq:
+def get_all_test_samples(wildcards):
+    from itertools import groupby, product
+    out = checkpoints.mock_ecDNA.get(**wildcards).output['fasta']
+    ecDNAs = list(sorted(map(int, glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no)))
+    ecDNAs = {group: list(batch) for group, batch in groupby(ecDNAs, lambda x: (x - 1) // NUM)}
+    depth_test_samples = {
+        f'{gsm}_D{depth}_L{READ_DEPTH_TEST_LENGTH}_ecDNA_G{group}': {
+            'bam': {
+                **{
+                    # chrom bam files
+                    f'{srr}_L{READ_DEPTH_TEST_LENGTH}': (
+                        config['workspace'] + f'/simulation/chrom_mapping/{gsm[:6]}/{gsm}/'
+                        f'L{READ_DEPTH_TEST_LENGTH}/{srr}_L{READ_DEPTH_TEST_LENGTH}.sorted.bam'
+                    )
+                    for srr in config['samples'][gsm]['fastq']
+                }, **{
+                    f'ecDNA_{no}': (
+                        config['workspace'] + f'/simulation/ecDNA_mapping/D{depth}/'
+                        f'L{READ_DEPTH_TEST_LENGTH}/ecDNA_{no}.sorted.bam'
+                    )
+                    for no in batch
+                }
+            }
+        }
+        for gsm, depth, (group, batch) in product(
+            config['samples'], READ_DEPTH_RANGES, ecDNAs.items()
+        )
+    }
+    length_test_samples = {
+        f'{gsm}_D{READ_LENGTH_TEST_DEPTH}_L{length}_ecDNA_G{group}': {
+            'bam': {
+                **{
+                    # chrom bam files
+                    f'{srr}_L{length}': (
+                        config['workspace'] + f'/simulation/chrom_mapping/{gsm[:6]}/{gsm}/'
+                        f'L{length}/{srr}_L{length}.sorted.bam'
+                    )
+                    for srr in config['samples'][gsm]['fastq']
+                }, **{
+                    f'ecDNA_{no}': (
+                        config['workspace'] + f'/simulation/ecDNA_mapping/D{READ_LENGTH_TEST_DEPTH}/'
+                        f'L{length}/ecDNA_{no}.sorted.bam'
+                    )
+                    for no in batch
+                }
+            }
+        }
+        for gsm, length, (group, batch) in product(
+            config['samples'], READ_LENGTH_RANGES, ecDNAs.items()
+        )
+    }
+    samples = {**depth_test_samples, **length_test_samples}
+    return samples
+
+
+def get_all_bam(wildcards):
+    samples = get_all_test_samples(wildcards)
+    bam_files = sum([
+        list(sample['bam'].values()) for sample in samples.values()
+    ], [])
+    return bam_files
+
+
+rule simulation_config:
+    output:
+        config['workspace'] + '/simulation/simulation.yaml'
     input:
-        get_all_samples_fastq,
-        get_all_ecDNA_fastq
+        get_all_bam
+    run:
+        import json, yaml
+        simulation = json.loads(json.dumps(config))
+        simulation['workspace'] = config['workspace'] + '/simulation'
+        simulation['samples'] = get_all_test_samples(wildcards)
+        with open(output[0], 'w') as f:
+            yaml.dump(simulation, f)
