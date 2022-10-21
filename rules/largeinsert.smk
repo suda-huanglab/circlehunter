@@ -5,6 +5,8 @@ rule largeinsert_tag:
         bam=rules.merge.output,
         index=rules.index.output,
         bed=rules.clean_bed.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_tag.txt'
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
         mapq=config['params']['mapq'],
@@ -22,6 +24,8 @@ rule largeinsert_pileup:
         rules.largeinsert_tag.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_pileup.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_pileup.txt'
     shell:
         'macs2 pileup --extsize 750 -f BED -i {input} -o {output} 2> {log}'
 
@@ -33,6 +37,8 @@ rule accessible_pileup:
         rules.accessible_tag.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_accessible_pileup.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_pileup.txt'
     shell:
         'macs2 pileup --extsize 750 -f BED -i {input} -o {output} 2> {log}'
 
@@ -43,6 +49,8 @@ rule largeinsert_ratio_value:
     input:
         pileup=rules.largeinsert_pileup.output,
         base=rules.accessible_pileup.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_ratio_value.txt'
     params:
         awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_ratio.awk'
     shell:
@@ -64,6 +72,8 @@ rule largeinsert_ratio:
         ratio=rules.largeinsert_ratio_value.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_ratio.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_ratio.txt'
     run:
         ratio = get_largeinsert_ratio(wildcards)
         shell(
@@ -86,6 +96,8 @@ rule largeinsert_lambda:
         accessible=rules.accessible_peak.output.lambda_bdg
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_lambda.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_lambda.txt'
     run:
         l = get_accessible_lambda(wildcards)
         shell(
@@ -101,6 +113,8 @@ rule largeinsert_pvalue:
         lambda_bdg=rules.largeinsert_lambda.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_pvalue.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_pvalue.txt'
     shell:
         'macs2 bdgcmp -t {input.pileup_bdg} -c {input.lambda_bdg} -m ppois -o {output} 2> {log}'
 
@@ -112,6 +126,8 @@ rule largeinsert_narrowPeak:
         rules.largeinsert_pvalue.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_narrowPeak.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_narrowPeak.txt'
     shell:
         'macs2 bdgpeakcall -i {input} -c 1.301 -l 50 -g 200 -o {output} 2> {log}'
 
@@ -124,6 +140,8 @@ rule largeinsert_merge:
         chrom_size=rules.chrom_sizes.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_merge.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_merge.txt'
     shell:
         'bedtools sort -g {input.chrom_size} -i {input.peaks}  2> {log}'
         ' | bedtools merge -d 1500 -i stdin -c 4,5 -o first,max > {output}'

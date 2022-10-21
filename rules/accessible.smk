@@ -5,6 +5,8 @@ rule accessible_tag:
         bam=rules.merge.output,
         index=rules.index.output,
         bed=rules.clean_bed.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_tag.txt'
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
         mapq=config['params']['mapq'],
@@ -24,6 +26,8 @@ rule accessible_peak:
         rules.accessible_tag.output
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_accessible_peak.log'
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_peak.txt'
     params:
         genome_size=config['genome']['size'],
         outdir=config['workspace'] + '/samples/{prefix}/{gsm}/accessible',
@@ -38,6 +42,8 @@ rule accessible_merge:
     input:
         accessible=rules.accessible_peak.output.peak,
         chrom_size=rules.chrom_sizes.output
+    benchmark:
+        config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_merge.txt'
     shell:
         'bedtools sort -g {input.chrom_size} -i {input.accessible}'
         ' | bedtools merge -d 12500 -i stdin -c 4,5 -o first,max > {output}'
