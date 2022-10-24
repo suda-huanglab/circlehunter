@@ -17,7 +17,7 @@ READ_LENGTH_RANGES = config['simulation']['read_length_ranges']
 READ_LENGTH_TEST_DEPTH = config['simulation']['read_length_test_depth']
 
 
-checkpoint mock_ecDNA:
+checkpoint mock_ecDNA_regions:
     output:
         bed=config['workspace'] + '/simulation/ecDNA/mock_ecDNA.bed',
         fasta=directory(config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa')
@@ -60,7 +60,7 @@ rule get_fasta:
 
 
 def get_all_ecDNA_fasta(wildcards):
-    out = checkpoints.mock_ecDNA.get(**wildcards).output['fasta']
+    out = checkpoints.mock_ecDNA_regions.get(**wildcards).output['fasta']
     bed_files = expand(
         f'{out}/ecDNA_{{no}}.fa',
         no=glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no
@@ -68,13 +68,9 @@ def get_all_ecDNA_fasta(wildcards):
     return bed_files
 
 
-rule merge_fasta:
-    output:
-        config['workspace'] + '/simulation/ecDNA/mock_ecDNA_merged.fa'
+rule mock_ecDNA:
     input:
         get_all_ecDNA_fasta
-    shell:
-        'cat {input} > {output}'
 
 
 rule trim_reads:
@@ -132,7 +128,7 @@ rule compress_mock_reads:
 
 
 def get_all_ecDNA_fastq(wildcards):
-    out = checkpoints.mock_ecDNA.get(**wildcards).output['fasta']
+    out = checkpoints.mock_ecDNA_regions.get(**wildcards).output['fasta']
     ecDNAs = glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no
     fastq_files = [
         (
@@ -220,7 +216,7 @@ use rule mapping as mapping_ecDNA_reads with:
 
 def get_all_test_samples(wildcards):
     from itertools import groupby, product
-    out = checkpoints.mock_ecDNA.get(**wildcards).output['fasta']
+    out = checkpoints.mock_ecDNA_regions.get(**wildcards).output['fasta']
     ecDNAs = list(sorted(map(int, glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no)))
     ecDNAs = {group: list(batch) for group, batch in groupby(ecDNAs, lambda x: (x - 1) // NUM)}
     depth_test_samples = {
