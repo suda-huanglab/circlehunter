@@ -32,22 +32,18 @@ checkpoint mock_ecDNA:
         segments_loc=1,
         segments_scale=1,
         max_consecutive_n=10000,
-        chrom_sizes=config['genome']['chrom_sizes'],
-        blacklist=config['genome']['blacklist'],
-        fasta=config['genome']['fasta'],
+        mock_regions=config['genome']['mock_regions'],
         output=config['workspace'] + '/simulation/ecDNA/mock_ecDNA'
     threads:
         workflow.cores
     benchmark:
         config['workspace'] + '/simulation/benchmarks/mock/mock.tsv'
     shell:
-        'python {params.script} -n {params.num} -m {params.multiply}'
-        ' -s {params.seed} -p {threads}'
+        'python {params.script} -n {params.num} -m {params.multiply} -s {params.seed}'
         ' --length-loc {params.length_loc} --length-scale {params.length_scale}'
         ' --length-minimum {params.length_minimum}'
         ' --segments-loc {params.segments_loc} --segments-scale {params.segments_scale}'
-        ' --max-consecutive-n {params.max_consecutive_n}'
-        ' {params.chrom_sizes} {params.blacklist} {params.fasta} {params.output}'
+        ' {params.mock_regions} {params.output}'
 
 
 rule get_fasta:
