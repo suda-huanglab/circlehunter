@@ -217,7 +217,7 @@ use rule mapping as mapping_ecDNA_reads with:
 def get_all_test_samples(wildcards):
     from itertools import groupby, product
     out = checkpoints.mock_ecDNA_regions.get(**wildcards).output['fasta']
-    ecDNAs = list(sorted(map(int, glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no)))
+    ecDNAs = list(sorted(map(int, glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no)))[:NUM * REPEAT]
     ecDNAs = {group: list(batch) for group, batch in groupby(ecDNAs, lambda x: (x - 1) // NUM)}
     depth_test_samples = {
         f'{gsm}_D{depth}_L{READ_DEPTH_TEST_LENGTH}_ecDNA_G{group}': {
