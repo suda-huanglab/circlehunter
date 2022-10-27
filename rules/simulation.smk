@@ -24,7 +24,7 @@ checkpoint mock_ecDNA_regions:
     params:
         script=os.path.dirname(workflow.snakefile) + '/tools/mock.py',
         num=NUM * REPEAT,
-        multiply=6,
+        multiply=10,
         seed=SEED,
         length_loc=12,
         length_scale=3.5,

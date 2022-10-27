@@ -3,14 +3,15 @@ genome:
     size: hs
     # path to genome reference fasta
     fasta: /share/references/hg38/fasta/hg38.fa
-    # path to reference genome size file
-    chrom_sizes: /share/references/hg38/fasta/hg38.chrom.sizes
     # path to genome bwa index
     bwa_index: /share/references/hg38/bwa_index/hg38.fa
     # path to sorted genome blacklist, download from ENCODE
     blacklist: /share/references/hg38/blacklist/hg38.blacklist.sorted.bed
     # gene annotation in bgzip bed format, must indexed using tabix, download from UCSC
     refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
+    # path to reference genome size file
+    mock_regions: /share/references/hg38/1000_Genomes_Project/20160622.allChr.pilot_mask.bed
+    # path to bed file than you want to mock ecDNA
 
 # path to ATAC-Seq adapter
 adapter: /path/to/resource/adapter.fa
@@ -24,8 +25,8 @@ params:
     # flag exclude
     exclude: 1548
     # maximum mismatch rate
-    mismatch: 0.02
-    # minimum depth for considering a junction coverage
+    mismatch: 0.05
+    # minimum depth for considering a junction coverage, optional
     depth: 10
     # maximum output circle
     limit: 1000
