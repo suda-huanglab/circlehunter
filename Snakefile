@@ -11,6 +11,11 @@ if 'simulation' in config:
     include: 'rules/simulation.smk'
 
 
+import os
+
+BASE_DIR = os.path.dirname(workflow.snakefile)
+
+
 rule all:
     input:
         [

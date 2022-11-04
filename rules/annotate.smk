@@ -8,6 +8,6 @@ rule annotate:
         bed=rules.calling.output,
         db=config['genome']['refgene']
     params:
-          script=os.path.dirname(workflow.snakefile) + '/tools/annotate.py'
+          script=lambda wildcards: BASE_DIR + '/tools/annotate.py'
     shell:
          'python {params.script} {input.db} {input.bed} {output}'

@@ -22,7 +22,7 @@ checkpoint mock_ecDNA_regions:
         bed=config['workspace'] + '/simulation/ecDNA/mock_ecDNA.bed',
         fasta=directory(config['workspace'] + '/simulation/ecDNA/mock_ecDNA.fa')
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/mock.py',
+        script=lambda wildcards: BASE_DIR + '/tools/mock.py',
         num=NUM * REPEAT,
         multiply=10,
         seed=SEED,

@@ -8,7 +8,7 @@ rule largeinsert_tag:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_tag.txt'
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
+        script=lambda wildcards: BASE_DIR + '/tools/bam2bed.py',
         mapq=config['params']['mapq'],
         include=config['params']['include'],
         exclude=config['params']['exclude'],
@@ -52,7 +52,7 @@ rule largeinsert_ratio_value:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_ratio_value.txt'
     params:
-        awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_ratio.awk'
+        awk=lambda wildcards: BASE_DIR + '/tools/largeinsert_ratio.awk'
     shell:
         'bedtools intersect -wo -a {input.base} -b {input.pileup} | awk -f {params.awk} > {output}'
 

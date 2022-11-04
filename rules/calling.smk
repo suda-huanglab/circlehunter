@@ -10,7 +10,7 @@ rule accessible_filter:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_filter.txt'
     params:
-        awk=os.path.dirname(workflow.snakefile) + '/tools/accessible_filter.awk'
+        awk=lambda wildcards: BASE_DIR + '/tools/accessible_filter.awk'
     shell:
         'bedtools intersect -c -a {input.accessible} -b {input.largeinsert}'
         ' | awk -f {params.awk} > {output}'
@@ -26,7 +26,7 @@ rule largeinsert_filter:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_filter.txt'
     params:
-        awk=os.path.dirname(workflow.snakefile) + '/tools/largeinsert_extractor.awk'
+        awk=lambda wildcards: BASE_DIR + '/tools/largeinsert_extractor.awk'
     shell:
         'bedtools slop -b 750 -g {input.chrom_size} -i {input.largeinsert}'
         ' | bedtools intersect -wb -a {input.accessible} -b stdin'
@@ -50,7 +50,7 @@ rule calling:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_calling.txt'
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/circlehunter.py',
+        script=lambda wildcards: BASE_DIR + '/tools/circlehunter.py',
         mapq=config['params']['mapq'],
         include=config['params']['include'],
         exclude=config['params']['exclude'],

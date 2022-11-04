@@ -186,7 +186,7 @@ rule extract_reads:
         reads=rules.reads_list.output,
         fq=lambda wildcards: config['samples'][wildcards.gsm][wildcards.srr][f'fq{wildcards.r}']
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/extractreads.py',
+        script=lambda wildcards: BASE_DIR + '/tools/extractreads.py',
     shell:
         'python {params.script} {input.fq} {input.reads} {output}'
 
@@ -274,7 +274,7 @@ rule extract_tag:
         index=rules.index.output,
         bed=lambda wildcards: os.path.splitext(config['genome']['fasta'])[0] + '.ecDNA.bed'
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
+        script=lambda wildcards: BASE_DIR + '/tools/bam2bed.py',
         mapq=config['params']['mapq'],
         include=config['params']['include'],
         exclude=config['params']['exclude'],

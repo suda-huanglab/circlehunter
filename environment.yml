@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - snakemake=6.1.0
+  - snakemake=7.17.1
   - fastp=0.20.1
   - bwa=0.7.17
   - samblaster=0.1.26
