@@ -68,8 +68,8 @@ rule chrom_sizes:
         bam=rules.merge.output,
         index=rules.index.output
     params:
-        regex=os.path.dirname(workflow.snakefile) + '/tools/chrom_size.regex',
-        awk=os.path.dirname(workflow.snakefile) + '/tools/chrom_size.awk'
+        regex=lambda wildcards: BASE_DIR + '/tools/chrom_size.regex',
+        awk=lambda wildcards: BASE_DIR + '/tools/chrom_size.awk'
     shell:
         'samtools idxstats {input.bam} | grep -f {params.regex} | awk -f {params.awk} > {output}'
 

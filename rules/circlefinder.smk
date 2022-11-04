@@ -23,7 +23,7 @@ rule circlefinder:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_circlefinder.txt'
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/circlefinder-pipeline-bwa-mem-samblaster.sh',
+        script=lambda wildcards: BASE_DIR + '/tools/circlefinder-pipeline-bwa-mem-samblaster.sh',
         workdir=config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder'
     shell:
         'cd {params.workdir}'

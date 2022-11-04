@@ -8,7 +8,7 @@ rule accessible_tag:
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_tag.txt'
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/bam2bed.py',
+        script=lambda wildcards: BASE_DIR + '/tools/bam2bed.py',
         mapq=config['params']['mapq'],
         include=config['params']['include'],
         exclude=config['params']['exclude'],
@@ -57,7 +57,7 @@ rule cutsites:
         index=rules.index.output,
         bed=rules.clean_bed.output
     params:
-        script=os.path.dirname(workflow.snakefile) + '/tools/cutsites.py',
+        script=lambda wildcards: BASE_DIR + '/tools/cutsites.py',
         include=lambda wildcards: config['params']['include'],
         exclude=lambda wildcards: config['params']['exclude'],
         mapq=lambda wildcards: config['params']['mapq']
