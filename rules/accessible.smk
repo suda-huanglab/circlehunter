@@ -46,7 +46,7 @@ rule accessible_merge:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_merge.txt'
     shell:
         'bedtools sort -g {input.chrom_size} -i {input.accessible}'
-        ' | bedtools merge -d 12500 -i stdin -c 4,5 -o first,max > {output}'
+        ' | bedtools merge -d 12500 -i stdin -c 4,5,7 -o first,max,mean > {output}'
 
 
 rule cutsites:

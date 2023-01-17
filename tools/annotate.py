@@ -10,9 +10,10 @@ import os
 
 def fetch_names(db, chrom, start, end):
     try:
-        return ','.join(record.split('\t')[3] for record in db.fetch(chrom, start, end))
+        genes = ','.join(record.split('\t')[3] for record in db.fetch(chrom, start, end))
+        return genes if len(genes) > 0 else '.'
     except ValueError:
-        return ''
+        return '.'
 
 
 def main():
