@@ -1,6 +1,9 @@
 import os
 
 
+KEEP_BAM = bool(config.get('keepbam', 1))
+
+
 rule mapping:
     output:
         temp(config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{srr}.sorted.bam')
@@ -44,7 +47,9 @@ def get_all_bam(wildcards):
 
 rule merge:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam'
+        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam' if KEEP_BAM else temp(
+            config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam'
+        )
     input:
         get_all_bam
     shell:
@@ -53,7 +58,9 @@ rule merge:
 
 rule index:
     output:
-        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam.bai'
+        config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam.bai' if KEEP_BAM else temp(
+            config['workspace'] + '/samples/{prefix}/{gsm}/mapping/{gsm}.sorted.bam.bai'
+        )
     input:
         rules.merge.output
     priority: 5

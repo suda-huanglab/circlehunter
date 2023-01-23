@@ -17,6 +17,11 @@ READ_LENGTH_RANGES = config['simulation']['read_length_ranges']
 READ_LENGTH_TEST_DEPTH = config['simulation']['read_length_test_depth']
 
 
+# segments
+SEGMENTS_LOC = config['simulation'].get('segments_loc', 1)
+SEGMENTS_SCALE = config['simulation'].get('segments_scale', 1)
+
+
 checkpoint mock_ecDNA_regions:
     output:
         bed=config['workspace'] + '/simulation/ecDNA/mock_ecDNA.bed',
@@ -29,8 +34,8 @@ checkpoint mock_ecDNA_regions:
         length_loc=12,
         length_scale=3.5,
         length_minimum=5000,
-        segments_loc=1,
-        segments_scale=1,
+        segments_loc=SEGMENTS_LOC,
+        segments_scale=SEGMENTS_SCALE,
         max_consecutive_n=10000,
         mock_regions=config['genome']['mock_regions'],
         output=config['workspace'] + '/simulation/ecDNA/mock_ecDNA'
@@ -120,7 +125,7 @@ rule mock_reads:
 
 rule compress_mock_reads:
     output:
-        config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq.gz'
+        temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq.gz')
     input:
         config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq'
     shell:
