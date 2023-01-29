@@ -34,6 +34,7 @@ checkpoint mock_ecDNA_regions:
         length_loc=12,
         length_scale=3.5,
         length_minimum=5000,
+        length_maximum=5_000_000,
         segments_loc=SEGMENTS_LOC,
         segments_scale=SEGMENTS_SCALE,
         max_consecutive_n=10000,
@@ -46,7 +47,7 @@ checkpoint mock_ecDNA_regions:
     shell:
         'python {params.script} -n {params.num} -m {params.multiply} -s {params.seed}'
         ' --length-loc {params.length_loc} --length-scale {params.length_scale}'
-        ' --length-minimum {params.length_minimum}'
+        ' --length-minimum {params.length_minimum} --length-maximum {params.length_maximum}'
         ' --segments-loc {params.segments_loc} --segments-scale {params.segments_scale}'
         ' {params.mock_regions} {params.output}'
 
