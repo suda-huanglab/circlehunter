@@ -69,7 +69,7 @@ def get_all_ecDNA_fasta(wildcards):
     out = checkpoints.mock_ecDNA_regions.get(**wildcards).output['fasta']
     bed_files = expand(
         f'{out}/ecDNA_{{no}}.fa',
-        no=glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no
+        no=range(1, NUM * REPEAT + 1)
     )
     return bed_files
 

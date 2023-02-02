@@ -17,7 +17,9 @@ rule circlefinder:
         config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder/{gsm}-hgxx.microDNA-JT.txt'
     input:
         bam=rules.prepare.output.bam,
-        index=rules.prepare.output.index
+        index=rules.prepare.output.index,
+        source_bam=rules.prepare.input.bam,
+        source_index=rules.prepare.input.index
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_circlefinder.log'
     benchmark:
