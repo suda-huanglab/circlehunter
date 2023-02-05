@@ -3,13 +3,13 @@ import os
 
 rule prepare:
     output:
-        bam=config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder/{gsm}-hgxx.sorted.bam',
-        index=config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder/{gsm}-hgxx.sorted.bam.bai'
+        bam=temp(config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder/{gsm}-hgxx.sorted.bam'),
+        index=temp(config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder/{gsm}-hgxx.sorted.bam.bai')
     input:
         bam=rules.merge.output,
         index=rules.index.output
     shell:
-        'ln -s {input.bam} {output.bam} && ln -s {input.index} {output.index}'
+        'rsync {input.bam} {output.bam} && rsync {input.index} {output.index}'
 
 
 rule circlefinder:
@@ -17,9 +17,7 @@ rule circlefinder:
         config['workspace'] + '/samples/{prefix}/{gsm}/circlefinder/{gsm}-hgxx.microDNA-JT.txt'
     input:
         bam=rules.prepare.output.bam,
-        index=rules.prepare.output.index,
-        source_bam=rules.prepare.input.bam,
-        source_index=rules.prepare.input.index
+        index=rules.prepare.output.index
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_circlefinder.log'
     benchmark:
