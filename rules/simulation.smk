@@ -34,7 +34,7 @@ checkpoint mock_ecDNA_regions:
         length_loc=12,
         length_scale=3.5,
         length_minimum=5000,
-        length_maximum=5_000_000,
+        length_maximum=500_000,
         segments_loc=SEGMENTS_LOC,
         segments_scale=SEGMENTS_SCALE,
         max_consecutive_n=10000,
@@ -81,7 +81,7 @@ rule mock_ecDNA:
 
 rule trim_reads:
     output:
-        config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
+        temp(config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz')
     input:
         lambda wildcards: config['samples'][wildcards.gsm]['fastq'][wildcards.srr][f'fq{wildcards.r}']
     shell:
@@ -169,6 +169,7 @@ use rule mapping as mapping_chrom_reads with:
     input:
         fq1=rules.trim_chrom_reads.output.fq1,
         fq2=rules.trim_chrom_reads.output.fq2
+    priority: 100
     log:
        bwa=config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_bwa.log',
        samblaster=config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_samblaster.log'
@@ -211,6 +212,7 @@ use rule mapping as mapping_ecDNA_reads with:
     input:
         fq1=rules.trim_ecNDA_reads.output.fq1,
         fq2=rules.trim_ecNDA_reads.output.fq2
+    priority: 50
     log:
        bwa=config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_bwa.log',
        samblaster=config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_samblaster.log'

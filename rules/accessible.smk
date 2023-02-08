@@ -5,6 +5,7 @@ rule accessible_tag:
         bam=rules.merge.output,
         index=rules.index.output,
         bed=rules.clean_bed.output
+    priority: 20
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_tag.txt'
     params:
@@ -24,6 +25,7 @@ rule accessible_peak:
         lambda_bdg=config['workspace'] + '/samples/{prefix}/{gsm}/accessible/{gsm}_accessible_control_lambda.bdg'
     input:
         rules.accessible_tag.output
+    priority: 30
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_accessible_peak.log'
     benchmark:
@@ -42,6 +44,7 @@ rule accessible_merge:
     input:
         accessible=rules.accessible_peak.output.peak,
         chrom_size=rules.chrom_sizes.output
+    priority: 40
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_accessible_merge.txt'
     shell:

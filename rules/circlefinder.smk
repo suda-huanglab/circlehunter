@@ -8,8 +8,9 @@ rule prepare:
     input:
         bam=rules.merge.output,
         index=rules.index.output
+    priority: 20
     shell:
-        'rsync {input.bam} {output.bam} && rsync {input.index} {output.index}'
+        'ln -s {input.bam} {output.bam} && ln -s {input.index} {output.index}'
 
 
 rule circlefinder:
@@ -18,6 +19,7 @@ rule circlefinder:
     input:
         bam=rules.prepare.output.bam,
         index=rules.prepare.output.index
+    priority: 30
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_circlefinder.log'
     benchmark:
