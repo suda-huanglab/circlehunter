@@ -5,6 +5,7 @@ rule largeinsert_tag:
         bam=rules.merge.output,
         index=rules.index.output,
         bed=rules.clean_bed.output
+    priority:20
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_tag.txt'
     params:
@@ -22,6 +23,7 @@ rule largeinsert_pileup:
         temp(config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_pileup.bdg')
     input:
         rules.largeinsert_tag.output
+    priority: 30
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_pileup.log'
     benchmark:
@@ -49,6 +51,7 @@ rule largeinsert_ratio_value:
     input:
         pileup=rules.largeinsert_pileup.output,
         base=rules.accessible_pileup.output
+    priority: 31
     benchmark:
         config['workspace'] + '/samples/{prefix}/{gsm}/benchmark/{gsm}_largeinsert_ratio_value.txt'
     params:
@@ -70,6 +73,7 @@ rule largeinsert_ratio:
     input:
         base=rules.accessible_peak.output.lambda_bdg,
         ratio=rules.largeinsert_ratio_value.output
+    priority: 31
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_ratio.log'
     benchmark:
@@ -94,6 +98,7 @@ rule largeinsert_lambda:
     input:
         largeinsert=rules.largeinsert_ratio.output,
         accessible=rules.accessible_peak.output.lambda_bdg
+    priority: 32
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_lambda.log'
     benchmark:
@@ -111,6 +116,7 @@ rule largeinsert_pvalue:
     input:
         pileup_bdg=rules.largeinsert_pileup.output,
         lambda_bdg=rules.largeinsert_lambda.output
+    priority: 33
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_pvalue.log'
     benchmark:
@@ -124,6 +130,7 @@ rule largeinsert_narrowPeak:
         config['workspace'] + '/samples/{prefix}/{gsm}/largeinsert/{gsm}_largeinsert_peaks.narrowPeak'
     input:
         rules.largeinsert_pvalue.output
+    priority: 34
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_narrowPeak.log'
     benchmark:
@@ -138,6 +145,7 @@ rule largeinsert_merge:
     input:
         peaks=rules.largeinsert_narrowPeak.output,
         chrom_size=rules.chrom_sizes.output
+    priority: 40
     log:
         config['workspace'] + '/samples/{prefix}/{gsm}/log/{gsm}_largeinsert_merge.log'
     benchmark:

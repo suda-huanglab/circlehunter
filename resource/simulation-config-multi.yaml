@@ -1,0 +1,42 @@
+workspace: /mnt/2w/data1/andy/mock_ecDNA
+
+samples:
+    GM12878:
+        fastq:
+            SRR14104212:
+                fq1: /mnt/2w/data2/andy/mock/fastq/GSE59395/GSM5214550/SRR14104212/SRR14104212_1.fastq.gz
+                fq2: /mnt/2w/data2/andy/mock/fastq/GSE59395/GSM5214550/SRR14104212/SRR14104212_2.fastq.gz
+            SRR14104213:
+                fq1: /mnt/2w/data2/andy/mock/fastq/GSE59395/GSM5214551/SRR14104213/SRR14104213_1.fastq.gz
+                fq2: /mnt/2w/data2/andy/mock/fastq/GSE59395/GSM5214551/SRR14104213/SRR14104213_2.fastq.gz
+
+simulation:
+    # random seed
+    # seed: 1665331200
+    seed: 123
+    # number of ecDNA mix in one sample
+    num: 20
+    # benchmark one sample repeat times
+    repeat: 25
+
+    # simulation reads fragment size
+    fragment_size_mean: 250
+    fragment_size_std: 180
+
+    # read coverage params
+    read_depth_test_length: 100
+    read_depth_ranges:
+        - 5
+        - 10
+        - 20
+        - 30
+        - 50
+        - 100
+
+    # read length params
+    read_length_test_depth: 30
+    read_length_ranges:
+        - 35
+        - 50
+        - 75
+        - 100
