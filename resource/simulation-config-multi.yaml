@@ -1,22 +1,3 @@
-genome:
-    size: hs
-    fasta: /share/references/hg38/fasta/hg38.fa
-    bwa_index: /share/references/hg38/bwa_index/hg38.fa
-    blacklist: /share/references/hg38/blacklist/hg38.blacklist.sorted.bed
-    refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
-    mock_regions: /home/andy/Projects/circlehunter/resource/chrom_sizes.bed
-
-adapter: /home/andy/Projects/circlehunter/resource/adapter.fa
-
-params:
-    mapq: 10
-    include: 1
-    exclude: 1548
-    mismatch: 0.05
-    limit: 1000
-
-keepbam: 0
-
 workspace: /mnt/2w/data1/andy/mock_ecDNA
 
 samples:
@@ -31,6 +12,7 @@ samples:
 
 simulation:
     # random seed
+    # seed: 1665331200
     seed: 123
     # number of ecDNA mix in one sample
     num: 20
