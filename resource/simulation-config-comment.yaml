@@ -1,0 +1,18 @@
+genome:
+    size: hs
+    fasta: /share/references/hg38/fasta/hg38.fa
+    bwa_index: /share/references/hg38/bwa_index/hg38.fa
+    blacklist: /share/references/hg38/blacklist/hg38.blacklist.sorted.bed
+    refgene: /share/references/hg38/refgene_anno/hg38.refGene.gene.bed.gz
+    mock_regions: /home/andy/Projects/circlehunter/resource/hg38-not-N-region.bed
+
+adapter: /home/andy/Projects/circlehunter/resource/adapter.fa
+
+params:
+    mapq: 0
+    include: 1
+    exclude: 1548
+    mismatch: 0.05
+    limit: 1000
+
+keepbam: 0

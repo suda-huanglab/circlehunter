@@ -17,6 +17,11 @@ READ_LENGTH_RANGES = config['simulation']['read_length_ranges']
 READ_LENGTH_TEST_DEPTH = config['simulation']['read_length_test_depth']
 
 
+# segments
+SEGMENTS_LOC = config['simulation'].get('segments_loc', 1)
+SEGMENTS_SCALE = config['simulation'].get('segments_scale', 1)
+
+
 checkpoint mock_ecDNA_regions:
     output:
         bed=config['workspace'] + '/simulation/ecDNA/mock_ecDNA.bed',
@@ -29,8 +34,9 @@ checkpoint mock_ecDNA_regions:
         length_loc=12,
         length_scale=3.5,
         length_minimum=5000,
-        segments_loc=1,
-        segments_scale=1,
+        length_maximum=500_000,
+        segments_loc=SEGMENTS_LOC,
+        segments_scale=SEGMENTS_SCALE,
         max_consecutive_n=10000,
         mock_regions=config['genome']['mock_regions'],
         output=config['workspace'] + '/simulation/ecDNA/mock_ecDNA'
@@ -41,7 +47,7 @@ checkpoint mock_ecDNA_regions:
     shell:
         'python {params.script} -n {params.num} -m {params.multiply} -s {params.seed}'
         ' --length-loc {params.length_loc} --length-scale {params.length_scale}'
-        ' --length-minimum {params.length_minimum}'
+        ' --length-minimum {params.length_minimum} --length-maximum {params.length_maximum}'
         ' --segments-loc {params.segments_loc} --segments-scale {params.segments_scale}'
         ' {params.mock_regions} {params.output}'
 
@@ -63,7 +69,7 @@ def get_all_ecDNA_fasta(wildcards):
     out = checkpoints.mock_ecDNA_regions.get(**wildcards).output['fasta']
     bed_files = expand(
         f'{out}/ecDNA_{{no}}.fa',
-        no=glob_wildcards(f'{out}/ecDNA_{{no}}.bed').no
+        no=range(1, NUM * REPEAT + 1)
     )
     return bed_files
 
@@ -75,7 +81,7 @@ rule mock_ecDNA:
 
 rule trim_reads:
     output:
-        config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz'
+        temp(config['workspace'] + '/simulation/chrom_fastq/{prefix}/{gsm}/L{length}/{srr}_L{length}_{r}.fastq.gz')
     input:
         lambda wildcards: config['samples'][wildcards.gsm]['fastq'][wildcards.srr][f'fq{wildcards.r}']
     shell:
@@ -120,7 +126,7 @@ rule mock_reads:
 
 rule compress_mock_reads:
     output:
-        config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq.gz'
+        temp(config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq.gz')
     input:
         config['workspace'] + '/simulation/ecDNA_fastq/D{depth}/L{length}/ecDNA_{no}_{r}.fq'
     shell:
@@ -163,6 +169,7 @@ use rule mapping as mapping_chrom_reads with:
     input:
         fq1=rules.trim_chrom_reads.output.fq1,
         fq2=rules.trim_chrom_reads.output.fq2
+    priority: 100
     log:
        bwa=config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_bwa.log',
        samblaster=config['workspace'] + '/simulation/chrom_log/{prefix}/{gsm}/L{length}/{srr}_L{length}_samblaster.log'
@@ -205,6 +212,7 @@ use rule mapping as mapping_ecDNA_reads with:
     input:
         fq1=rules.trim_ecNDA_reads.output.fq1,
         fq2=rules.trim_ecNDA_reads.output.fq2
+    priority: 50
     log:
        bwa=config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_bwa.log',
        samblaster=config['workspace'] + '/simulation/ecDNA_log/D{depth}/L{length}/ecDNA_{no}_samblaster.log'

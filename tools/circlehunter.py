@@ -44,14 +44,16 @@ def peaks2graph(peaks):
         peaks (string): path to the large peaks bed file.
     """
     peaks = pd.read_table(
-        peaks, names=['chrom', 'start', 'end', 'peak', 'peak_weight', 'large_weight'], usecols=range(6)
+        peaks, names=[
+            'chrom', 'start', 'end', 'peak', 'peak_weight', 'large_weight', 'fold_enrich'
+        ], usecols=range(7)
     )
 
     graph = nx.MultiGraph()
 
-    for _, *interval, peak, peak_weight, large_weight in peaks.itertuples():
+    for _, *interval, peak, peak_weight, large_weight, fold_enrich in peaks.itertuples():
         graph.add_node(
-            Region(*interval), peak=peak, peak_weight=peak_weight, weight=large_weight
+            Region(*interval), peak=peak, peak_weight=peak_weight, peak_fold_enrich=fold_enrich, weight=large_weight
         )
 
     return graph
@@ -239,7 +241,8 @@ def add_peak_connections(graph):
         if not has_direction(graph, node2, '+'):
             continue
         graph.add_edge(
-            node1, node2, PEAK, peak=meta1['peak'], weight=meta1['peak_weight']
+            node1, node2, PEAK, peak=meta1['peak'],
+            weight=meta1['peak_weight'], fold_enrich=meta1['peak_fold_enrich']
         )
     return graph
 
@@ -770,11 +773,20 @@ def run(peaks, bam, out, min_depth, include=1, exclude=1036, mapq=10, ratio=0.05
                 break
             t = len(circle)
             for p, ((region1, region2), (motif1, motif2)) in enumerate(zip(circle, motif), start=1):
+                current_index = p - 1
+                next_index = p if p < len(circle) else 0
+                link_reads = graph.edges[(circle[current_index][1], circle[next_index][0], LARGE)]['weight']
+                
+                fold_enrich = graph.edges[(region1, region2, PEAK)]['fold_enrich']
+
                 chrom, start, end, strand, start_ci, end_ci, pr1, pr2 = estimate_segment(
                     region1, region2, motif1, motif2, bam, include, exclude, mapq, ratio, min_insert_size, error
                 )
                 print(
-                    f'{chrom}\t{start}\t{end}\tecDNA_{n}_{t}_{p}\t.\t{strand}\t{start_ci}\t{end_ci}\t{pr1}\t{pr2}', file=f
+                    (
+                        f'{chrom}\t{start}\t{end}\tecDNA_{n}_{t}_{p}\t.\t{strand}\t'
+                        f'{start_ci}\t{end_ci}\t{pr1}\t{pr2}\t{fold_enrich}\t{link_reads}'
+                    ), file=f
                 )
 
 

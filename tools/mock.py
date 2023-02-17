@@ -10,7 +10,8 @@ import pandas as pd
 
 def run(
     mock_regions, out, size=1000, seed=0, multiple=6,
-    length_loc=12, length_scale=3.5, length_minimum=5000,
+    length_loc=12, length_scale=3.5,
+    length_minimum=5000, length_maximum=5_000_000,
     segments_loc=1, segments_scale=1
 ):
     # let all regions in a single axis
@@ -27,6 +28,7 @@ def run(
     rs = np.random.RandomState(seed)
     random_length = rs.normal(length_loc, length_scale, multiple * size)
     random_length = np.round(np.exp(random_length)).astype(int) + length_minimum
+    random_length = random_length % length_maximum
     rs = np.random.RandomState(seed)
     random_strand = rs.choice(['+', '-'], multiple * size)
     rs = np.random.RandomState(seed)
@@ -131,6 +133,9 @@ def main():
         '--length-minimum', dest='length_minimum', help='length minimum', default=5000, type=int
     )
     parser.add_argument(
+        '--length-maximum', dest='length_maximum', help='length maximum', default=5_000_000, type=int
+    )
+    parser.add_argument(
         '--segments-loc', dest='segments_loc', help='ln segments loc', default=1, type=float
     )
     parser.add_argument(
@@ -141,7 +146,7 @@ def main():
         args['<mock_regions>'], args['<out>'],
         size=args['size'], seed=args['seed'], multiple=args['multiple'],
         length_loc=args['length_loc'], length_scale=args['length_scale'],
-        length_minimum=args['length_minimum'],
+        length_minimum=args['length_minimum'], length_maximum=args['length_maximum'],
         segments_loc=args['segments_loc'], segments_scale=args['segments_scale']
     )
 
